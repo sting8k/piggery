@@ -1,0 +1,11 @@
+/piggery
+/dist/
+
+# Private: these live only on the dev-local branch. Never add them here.
+/.harness/
+/.harness-backup/
+/docs/
+/AGENTS.md
+/CLAUDE.md
+/scripts/
+/just-harness-cli

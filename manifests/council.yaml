@@ -1,0 +1,52 @@
+# council: the chair asks independent members about one decision and gives the Human the verdict.
+# Members answer only the chair (declarative tools, no free send), so they cannot see each other.
+model: council
+summary: A chair asks independent members, each through one lens, about one hard decision and gives the verdict.
+auto_join_role: chair   # the founder's role when a session founds a team from this template
+roles:
+  chair:
+    description: Writes a neutral brief, gets independent opinions, questions them, and gives the verdict.
+    instructions_file: prompts/council/chair.md
+    tools: [send, inbox, who, agent]
+    can_spawn: [member]
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  member:
+    description: Answers the chair's brief through one lens, with evidence, without seeing the others.
+    instructions_file: prompts/council/member.md
+    tools: [inbox, who, done, answer]        # no free send
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+routing:
+  - {from: chair, to: member, allow: true, cc: []}
+  - {from: member, to: chair, allow: true, cc: []}
+  - {from: chair, to: notify, allow: true, cc: []}
+tools:
+  done:
+    description: Send your opinion, in the brief's sections, to the chair who spawned you.
+    params: {summary: string}
+    send: {kind: opinion, to: spawned_by}
+  answer:
+    description: Answer the chair's follow-up (CONCEDE, MAINTAIN, NARROW or REVERSE, with evidence).
+    params: {text: string}
+    send: {kind: answer, to: spawned_by}
+timers:
+  - {on: member, notify: reports_to, silent_for: 20m}
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 4           # live workers at once
+  messages_per_participant_per_minute: 30
+  messages_per_thread: none
+  max_hops: 20             # replies in one reply_to chain
+  max_respawn_per_hour: none

@@ -1,0 +1,72 @@
+# slp: Supervisor - Lead - Peer, lanes (after vhlam.com/article/agent-orchestration-multi-agent-slp).
+# Roles are responsibility, authority and escalation, not personas. The Human talks to the
+# Supervisor (the session that founds the team); the Supervisor opens lanes, one Lead each, in the
+# team root or a git worktree per lane; the Lead splits its lane into scopes for Peers. The Supervisor may tell a Peer
+# something directly, and routing copies the Lead. Peers have no free send: `done` and `ask` go to
+# the Lead; the Lead's go to the Supervisor. The Lead keeps the lane's plan on the board.
+model: slp
+summary: Lanes of work (code, research, writing, operations…) where the Human sets direction through a Supervisor, a Lead owns the plan and integration, and Peers own separate scopes and may question the premise.
+auto_join_role: supervisor   # the founder's role when a session founds a team from this template
+roles:
+  supervisor:
+    description: Settles goal and trade-offs with the Human, opens the lane with a brief, watches for drift, and brings back what the Human must decide.
+    instructions_file: prompts/slp/supervisor.md   # inlined by `piggery --admin team up`
+    tools: [send, inbox, who, agent]
+    can_spawn: [lead]
+    can_pin: true
+    can_set_cwd: true
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  lead:
+    description: Holds the lane's plan on the board, splits it into scopes with one owner each, judges the evidence, and integrates.
+    instructions_file: prompts/slp/lead.md
+    tools: [send, inbox, who, agent, done, ask]
+    can_spawn: [peer]
+    can_pin: true
+    can_set_cwd: true
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  peer:
+    description: Owns one scope and the judgement inside it; may question the premise with evidence; hands back what is true.
+    instructions_file: prompts/slp/peer.md
+    tools: [inbox, who, done, ask]           # no free send
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+routing:
+  - {from: supervisor, to: lead, allow: true, cc: []}
+  - {from: lead, to: supervisor, allow: true, cc: []}
+  - {from: lead, to: peer, allow: true, cc: []}
+  - {from: peer, to: lead, allow: true, cc: []}
+  - {from: supervisor, to: peer, allow: true, cc: [lead]}   # the Lead sees what the Supervisor tells a Peer
+  - {from: supervisor, to: notify, allow: true, cc: []}
+tools:
+  done:
+    description: Hand your work back to whoever spawned you.
+    params: {summary: string, checks: string, left_undone: string}
+    send: {kind: handback, to: spawned_by}
+  ask:
+    description: Ask whoever spawned you something outside your authority, with your best guess; keep working if you can.
+    params: {question: string, best_guess: string}
+    send: {kind: ask, to: spawned_by}
+timers:
+  - {on: peer, notify: reports_to, silent_for: 20m}
+  - {on: lead, notify: reports_to, silent_for: 30m}
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 5           # live workers at once
+  messages_per_participant_per_minute: 30
+  messages_per_thread: none
+  max_hops: 20             # replies in one reply_to chain
+  max_respawn_per_hour: none

@@ -1,0 +1,117 @@
+{"type":"_readme","pi":"0.87.1","model":"HP/glm-5.3-flash","captured":"2026-09-26","source":"temporary probe extension logging pi.on(...) events; one pi process per scenario","command":"pi --mode rpc --no-extensions -e probe.ts --no-session --no-skills --no-context-files --no-prompt-templates --model HP/glm-5.3-flash (error: --model HP/no-such-model-xyz)","fields":"t_ms = ms since the scenario's first event; idle = ctx.isIdle() at the event; probe_send = the probe calling pi.sendUserMessage; text = first 60 chars of user messages","scenarios":{"tool":"prompt with one bash tool call","steer":"probe steers (deliverAs steer) 1.5s after agent_start while the tool runs","abort":"rpc abort 1s after tool_execution_start (bash sleep 20)","abort_stream":"rpc abort 1s after the first message_update, no tool","idle_send":"probe calls sendUserMessage without deliverAs 0.5s after agent_settled","ui_prompt":"tool calls ctx.ui.confirm; driver answers confirmed:true after 1s","error":"unknown model id -> provider 404"}}
+{"scenario":"tool","t_ms":0,"mode":"rpc","type":"session_start","idle":true,"reason":"startup"}
+{"scenario":"tool","t_ms":3,"mode":"rpc","type":"agent_start","idle":false,"n":1}
+{"scenario":"tool","t_ms":3,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"tool","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"system"}
+{"scenario":"tool","t_ms":4,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"Use the bash tool to run `echo hello`, then reply with its o"}
+{"scenario":"tool","t_ms":812,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"tool","t_ms":833,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"toolUse"}
+{"scenario":"tool","t_ms":841,"mode":"rpc","type":"message_start","idle":false,"role":"toolResult"}
+{"scenario":"tool","t_ms":842,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":1,"outcome":"completed"}
+{"scenario":"tool","t_ms":842,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":1}
+{"scenario":"tool","t_ms":1479,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"tool","t_ms":1507,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"stop"}
+{"scenario":"tool","t_ms":1508,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":1,"toolResults":0,"outcome":"completed"}
+{"scenario":"tool","t_ms":1509,"mode":"rpc","type":"agent_end","idle":false,"messages":5}
+{"scenario":"tool","t_ms":1512,"mode":"rpc","type":"agent_before_settle","idle":false,"outcome":"completed","continue":false,"pending":0}
+{"scenario":"tool","t_ms":1513,"mode":"rpc","type":"agent_settled","idle":true,"n":1}
+{"scenario":"tool","t_ms":3018,"mode":"rpc","type":"session_shutdown","idle":true,"reason":"quit"}
+{"scenario":"steer","t_ms":0,"mode":"rpc","type":"session_start","idle":true,"reason":"startup"}
+{"scenario":"steer","t_ms":2,"mode":"rpc","type":"agent_start","idle":false,"n":1}
+{"scenario":"steer","t_ms":3,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"steer","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"system"}
+{"scenario":"steer","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"Use the bash tool to run `sleep 4 && echo done`, then reply "}
+{"scenario":"steer","t_ms":764,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"steer","t_ms":813,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"toolUse"}
+{"scenario":"steer","t_ms":1505,"mode":"rpc","type":"probe_send","idle":false,"deliverAs":"steer","busy":true}
+{"scenario":"steer","t_ms":4928,"mode":"rpc","type":"message_start","idle":false,"role":"toolResult"}
+{"scenario":"steer","t_ms":4929,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":1,"outcome":"completed"}
+{"scenario":"steer","t_ms":4929,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":1}
+{"scenario":"steer","t_ms":4929,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"STEER-TOKEN: after the command, also end your answer with th"}
+{"scenario":"steer","t_ms":5686,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"steer","t_ms":5862,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"stop"}
+{"scenario":"steer","t_ms":5863,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":1,"toolResults":0,"outcome":"completed"}
+{"scenario":"steer","t_ms":5864,"mode":"rpc","type":"agent_end","idle":false,"messages":6}
+{"scenario":"steer","t_ms":5867,"mode":"rpc","type":"agent_before_settle","idle":false,"outcome":"completed","continue":false,"pending":0}
+{"scenario":"steer","t_ms":5868,"mode":"rpc","type":"agent_settled","idle":true,"n":1}
+{"scenario":"steer","t_ms":7373,"mode":"rpc","type":"session_shutdown","idle":true,"reason":"quit"}
+{"scenario":"abort","t_ms":0,"mode":"rpc","type":"session_start","idle":true,"reason":"startup"}
+{"scenario":"abort","t_ms":2,"mode":"rpc","type":"agent_start","idle":false,"n":1}
+{"scenario":"abort","t_ms":3,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"abort","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"system"}
+{"scenario":"abort","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"Use the bash tool to run `sleep 20`, then say finished."}
+{"scenario":"abort","t_ms":1117,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"abort","t_ms":1199,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"toolUse"}
+{"scenario":"abort","t_ms":2210,"mode":"rpc","type":"message_start","idle":false,"role":"toolResult"}
+{"scenario":"abort","t_ms":2213,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":1,"outcome":"completed"}
+{"scenario":"abort","t_ms":2216,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":1}
+{"scenario":"abort","t_ms":2218,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"abort","t_ms":2219,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"error","error":"This operation was aborted"}
+{"scenario":"abort","t_ms":2219,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":1,"toolResults":0,"outcome":"error"}
+{"scenario":"abort","t_ms":2220,"mode":"rpc","type":"agent_end","idle":false,"messages":5}
+{"scenario":"abort","t_ms":2220,"mode":"rpc","type":"agent_settled","idle":true,"n":1}
+{"scenario":"abort","t_ms":3726,"mode":"rpc","type":"session_shutdown","idle":true,"reason":"quit"}
+{"scenario":"abort_stream","t_ms":0,"mode":"rpc","type":"session_start","idle":true,"reason":"startup"}
+{"scenario":"abort_stream","t_ms":2,"mode":"rpc","type":"agent_start","idle":false,"n":1}
+{"scenario":"abort_stream","t_ms":3,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"abort_stream","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"system"}
+{"scenario":"abort_stream","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"Write a 600-word essay about pigs."}
+{"scenario":"abort_stream","t_ms":802,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"abort_stream","t_ms":1838,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"aborted","error":"Request was aborted"}
+{"scenario":"abort_stream","t_ms":1840,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":0,"outcome":"aborted"}
+{"scenario":"abort_stream","t_ms":1841,"mode":"rpc","type":"agent_end","idle":false,"messages":3}
+{"scenario":"abort_stream","t_ms":1842,"mode":"rpc","type":"agent_settled","idle":true,"n":1}
+{"scenario":"abort_stream","t_ms":3347,"mode":"rpc","type":"session_shutdown","idle":true,"reason":"quit"}
+{"scenario":"idle_send","t_ms":0,"mode":"rpc","type":"session_start","idle":true,"reason":"startup"}
+{"scenario":"idle_send","t_ms":3,"mode":"rpc","type":"agent_start","idle":false,"n":1}
+{"scenario":"idle_send","t_ms":3,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"idle_send","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"system"}
+{"scenario":"idle_send","t_ms":4,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"Reply with exactly: FIRST-OK"}
+{"scenario":"idle_send","t_ms":736,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"idle_send","t_ms":754,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"stop"}
+{"scenario":"idle_send","t_ms":756,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":0,"outcome":"completed"}
+{"scenario":"idle_send","t_ms":756,"mode":"rpc","type":"agent_end","idle":false,"messages":3}
+{"scenario":"idle_send","t_ms":758,"mode":"rpc","type":"agent_before_settle","idle":false,"outcome":"completed","continue":false,"pending":0}
+{"scenario":"idle_send","t_ms":758,"mode":"rpc","type":"agent_settled","idle":true,"n":1}
+{"scenario":"idle_send","t_ms":1260,"mode":"rpc","type":"probe_send","idle":true,"deliverAs":null,"busy":false}
+{"scenario":"idle_send","t_ms":1263,"mode":"rpc","type":"agent_start","idle":false,"n":2}
+{"scenario":"idle_send","t_ms":1264,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"idle_send","t_ms":1264,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"IDLE-TOKEN: reply with exactly IDLE-OK"}
+{"scenario":"idle_send","t_ms":1903,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"idle_send","t_ms":1958,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"stop"}
+{"scenario":"idle_send","t_ms":1959,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":0,"outcome":"completed"}
+{"scenario":"idle_send","t_ms":1960,"mode":"rpc","type":"agent_end","idle":false,"messages":2}
+{"scenario":"idle_send","t_ms":1961,"mode":"rpc","type":"agent_before_settle","idle":false,"outcome":"completed","continue":false,"pending":0}
+{"scenario":"idle_send","t_ms":1964,"mode":"rpc","type":"agent_settled","idle":true,"n":2}
+{"scenario":"idle_send","t_ms":3467,"mode":"rpc","type":"session_shutdown","idle":true,"reason":"quit"}
+{"scenario":"ui_prompt","t_ms":0,"mode":"rpc","type":"session_start","idle":true,"reason":"startup"}
+{"scenario":"ui_prompt","t_ms":2,"mode":"rpc","type":"agent_start","idle":false,"n":1}
+{"scenario":"ui_prompt","t_ms":2,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"ui_prompt","t_ms":2,"mode":"rpc","type":"message_start","idle":false,"role":"system"}
+{"scenario":"ui_prompt","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"Call the probe_confirm tool once, then report its result."}
+{"scenario":"ui_prompt","t_ms":761,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"ui_prompt","t_ms":891,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"toolUse"}
+{"scenario":"ui_prompt","t_ms":893,"mode":"rpc","type":"ui_prompt_start","idle":false,"kind":"confirm"}
+{"scenario":"ui_prompt","t_ms":1896,"mode":"rpc","type":"ui_prompt_end","idle":false,"kind":"confirm"}
+{"scenario":"ui_prompt","t_ms":1899,"mode":"rpc","type":"message_start","idle":false,"role":"toolResult"}
+{"scenario":"ui_prompt","t_ms":1903,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":1,"outcome":"completed"}
+{"scenario":"ui_prompt","t_ms":1906,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":1}
+{"scenario":"ui_prompt","t_ms":2480,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"ui_prompt","t_ms":2563,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"stop"}
+{"scenario":"ui_prompt","t_ms":2564,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":1,"toolResults":0,"outcome":"completed"}
+{"scenario":"ui_prompt","t_ms":2565,"mode":"rpc","type":"agent_end","idle":false,"messages":5}
+{"scenario":"ui_prompt","t_ms":2568,"mode":"rpc","type":"agent_before_settle","idle":false,"outcome":"completed","continue":false,"pending":0}
+{"scenario":"ui_prompt","t_ms":2569,"mode":"rpc","type":"agent_settled","idle":true,"n":1}
+{"scenario":"ui_prompt","t_ms":4070,"mode":"rpc","type":"session_shutdown","idle":true,"reason":"quit"}
+{"scenario":"error","t_ms":0,"mode":"rpc","type":"session_start","idle":true,"reason":"startup"}
+{"scenario":"error","t_ms":2,"mode":"rpc","type":"agent_start","idle":false,"n":1}
+{"scenario":"error","t_ms":2,"mode":"rpc","type":"turn_start","idle":false,"turnIndex":0}
+{"scenario":"error","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"system"}
+{"scenario":"error","t_ms":3,"mode":"rpc","type":"message_start","idle":false,"role":"user","text":"Reply with exactly: PONG"}
+{"scenario":"error","t_ms":384,"mode":"rpc","type":"message_start","idle":false,"role":"assistant"}
+{"scenario":"error","t_ms":386,"mode":"rpc","type":"message_end","idle":false,"role":"assistant","stopReason":"error","error":"404: {\"message\":\"model not found: no-such-model-xyz\",\"type\":\"invalid_request_err"}
+{"scenario":"error","t_ms":388,"mode":"rpc","type":"turn_end","idle":false,"turnIndex":0,"toolResults":0,"outcome":"error"}
+{"scenario":"error","t_ms":389,"mode":"rpc","type":"agent_end","idle":false,"messages":3}
+{"scenario":"error","t_ms":397,"mode":"rpc","type":"agent_before_settle","idle":false,"outcome":"error","continue":false,"pending":0}
+{"scenario":"error","t_ms":397,"mode":"rpc","type":"agent_settled","idle":true,"n":1}
+{"scenario":"error","t_ms":1901,"mode":"rpc","type":"session_shutdown","idle":true,"reason":"quit"}

@@ -1,0 +1,333 @@
+{
+  "pid": 62243,
+  "started_at": 1790591231299,
+  "teams": [
+    {
+      "id": "01M3GVR8PCZ674T5TAZX6825F8",
+      "name": "api",
+      "root": "/home/dev/src/labs/api",
+      "gate": "",
+      "held": 0,
+      "unacked": 1,
+      "members": [
+        {
+          "id": "01M3GVPWDFV3XCJVKDMX5M9AK5",
+          "name": "pi-1366de",
+          "role": "planner",
+          "state": "gone",
+          "headless": false,
+          "gate": false,
+          "state_since": 1790565593863,
+          "last_turn_end": 1790494158731,
+          "unacked": 0,
+          "model": "zai/glm-5.3",
+          "run_id": "01M3GVPWDFV3XCJVKDMVGMFW4T",
+          "capabilities": null,
+          "harness": "pi",
+          "created_at": 1790493553071,
+          "last_activity": 1790565593863,
+          "cwd": "/home/dev/src/labs/api"
+        },
+        {
+          "id": "01M3GVWX2B1DSG3GJPXT3M8KB6",
+          "name": "dev-1",
+          "role": "dev",
+          "state": "gone",
+          "headless": true,
+          "gate": false,
+          "state_since": 1790494038995,
+          "last_turn_end": 1790493924551,
+          "unacked": 0,
+          "model": "zai/glm-5.3",
+          "run_id": "01M3GVWX2B1DSG3GJPXXWP10VW",
+          "reports_to": "01M3GVPWDFV3XCJVKDMX5M9AK5",
+          "capabilities": null,
+          "harness": "pi",
+          "created_at": 1790493750347,
+          "last_activity": 1790494038995,
+          "cwd": "/home/dev/src/labs/api",
+          "spawned_by": "01M3GVPWDFV3XCJVKDMX5M9AK5"
+        },
+        {
+          "id": "01M3GW21TFXC36B0E3E44DHXQ6",
+          "name": "dev-2",
+          "role": "dev",
+          "state": "gone",
+          "headless": true,
+          "gate": false,
+          "state_since": 1790494136930,
+          "last_turn_end": 1790494108684,
+          "unacked": 1,
+          "model": "zai/glm-5.3",
+          "run_id": "01M3GW21TFXC36B0E3E7SCB3RD",
+          "reports_to": "01M3GVPWDFV3XCJVKDMX5M9AK5",
+          "capabilities": null,
+          "harness": "pi",
+          "created_at": 1790493919055,
+          "last_activity": 1790494136930,
+          "cwd": "/home/dev/src/labs/api",
+          "spawned_by": "01M3GVPWDFV3XCJVKDMX5M9AK5"
+        }
+      ],
+      "created_at": 1790493598412
+    }
+  ],
+  "closed": [],
+  "solos": [
+    {
+      "id": "01M3K0DQ99NPEDE0VKJP5Q4AY0",
+      "name": "vital-plain",
+      "cwd": "/home/dev/src/labs/shop",
+      "state": "idle",
+      "state_since": 1790591231736,
+      "unacked": 0,
+      "created_at": 1790565604649,
+      "harness": "pi",
+      "model": "zai/glm-5.3",
+      "last_activity": 1790591231736,
+      "protocol_version": 1
+    },
+    {
+      "id": "01M3K6K0JM8QF0KGXSFEV7SX8J",
+      "name": "icy-oasis",
+      "cwd": "/home/dev/src/labs/shop",
+      "state": "idle",
+      "state_since": 1790591231736,
+      "unacked": 0,
+      "created_at": 1790572069460,
+      "harness": "pi",
+      "model": "CPAv2/devin/swe-2",
+      "last_activity": 1790591231736,
+      "protocol_version": 1
+    }
+  ],
+  "held": 0,
+  "unacked": 1,
+  "events": [
+    {
+      "seq": 111,
+      "ts": 1790590176647,
+      "type": "reconcile",
+      "participant": "01M3K0DQ99NPEDE0VKJP5Q4AY0",
+      "run_id": "01M3K0DQ99NPEDE0VKJJ65ZWDQ",
+      "payload": {
+        "decision": "gone",
+        "from_state": "idle",
+        "reason": "daemon_restart"
+      }
+    },
+    {
+      "seq": 112,
+      "ts": 1790590176647,
+      "type": "reconcile",
+      "participant": "01M3K6K0JM8QF0KGXSFEV7SX8J",
+      "run_id": "01M3K6K0JM8QF0KGXSFDAB247B",
+      "payload": {
+        "decision": "gone",
+        "from_state": "idle",
+        "reason": "daemon_restart"
+      }
+    },
+    {
+      "seq": 113,
+      "ts": 1790591231305,
+      "type": "reconcile",
+      "participant": "01M3K0DQ99NPEDE0VKJP5Q4AY0",
+      "run_id": "01M3K0DQ99NPEDE0VKJJ65ZWDQ",
+      "payload": {
+        "decision": "gone",
+        "from_state": "idle",
+        "reason": "daemon_restart"
+      }
+    },
+    {
+      "seq": 114,
+      "ts": 1790591231305,
+      "type": "reconcile",
+      "participant": "01M3K6K0JM8QF0KGXSFEV7SX8J",
+      "run_id": "01M3K6K0JM8QF0KGXSFDAB247B",
+      "payload": {
+        "decision": "gone",
+        "from_state": "idle",
+        "reason": "daemon_restart"
+      }
+    },
+    {
+      "seq": 115,
+      "ts": 1790592214134,
+      "type": "gc",
+      "ref_id": "01M3H932XJV2RCW585BP0BQNPG",
+      "payload": {
+        "archive": "/home/dev/.piggery/archive/01M3H932XJV2RCW585BP0BQNPG-1790511574190.jsonl",
+        "counts": {
+          "batches": 12,
+          "deliveries": 13,
+          "events": 10,
+          "messages": 13,
+          "participants": 3,
+          "processes": 2,
+          "teams": 1,
+          "timers": 0
+        },
+        "name": "api-2",
+        "team": "01M3H932XJV2RCW585BP0BQNPG"
+      }
+    },
+    {
+      "seq": 116,
+      "ts": 1790592214154,
+      "type": "gc",
+      "ref_id": "01M3HX86G70TETR9WSNYECFR99",
+      "payload": {
+        "archive": "/home/dev/.piggery/archive/01M3HX86G70TETR9WSNYECFR99-1790529287635.jsonl",
+        "counts": {
+          "batches": 10,
+          "deliveries": 10,
+          "events": 8,
+          "messages": 10,
+          "participants": 2,
+          "processes": 2,
+          "teams": 1,
+          "timers": 0
+        },
+        "name": "pg-live-claude",
+        "team": "01M3HX86G70TETR9WSNYECFR99"
+      }
+    },
+    {
+      "seq": 117,
+      "ts": 1790592214171,
+      "type": "gc",
+      "ref_id": "01M3HZGBN133W2JPDBH20299Y0",
+      "payload": {
+        "archive": "/home/dev/.piggery/archive/01M3HZGBN133W2JPDBH20299Y0-1790532363927.jsonl",
+        "counts": {
+          "batches": 27,
+          "deliveries": 22,
+          "events": 20,
+          "messages": 13,
+          "participants": 2,
+          "processes": 5,
+          "teams": 1,
+          "timers": 0
+        },
+        "name": "pg-live-pi-0044",
+        "team": "01M3HZGBN133W2JPDBH20299Y0"
+      }
+    },
+    {
+      "seq": 118,
+      "ts": 1790592214185,
+      "type": "gc",
+      "ref_id": "01M3J210K1R0A2FJ2M1BR2JG38",
+      "payload": {
+        "archive": "/home/dev/.piggery/archive/01M3J210K1R0A2FJ2M1BR2JG38-1790533975624.jsonl",
+        "counts": {
+          "batches": 1,
+          "deliveries": 0,
+          "events": 5,
+          "messages": 1,
+          "participants": 1,
+          "processes": 0,
+          "teams": 1,
+          "timers": 0
+        },
+        "name": "pg-live-cc-0127",
+        "team": "01M3J210K1R0A2FJ2M1BR2JG38"
+      }
+    },
+    {
+      "seq": 119,
+      "ts": 1790592214197,
+      "type": "gc",
+      "ref_id": "01M3J21A95ED5MDNKXW9QYMAQQ",
+      "payload": {
+        "archive": "/home/dev/.piggery/archive/01M3J21A95ED5MDNKXW9QYMAQQ-1790533975660.jsonl",
+        "counts": {
+          "batches": 0,
+          "deliveries": 0,
+          "events": 3,
+          "messages": 0,
+          "participants": 1,
+          "processes": 0,
+          "teams": 1,
+          "timers": 0
+        },
+        "name": "pg-live-cc-0127-2",
+        "team": "01M3J21A95ED5MDNKXW9QYMAQQ"
+      }
+    },
+    {
+      "seq": 120,
+      "ts": 1790592214208,
+      "type": "gc",
+      "ref_id": "01M3J29GDMYY3TY3MFM123CMDT",
+      "payload": {
+        "archive": "/home/dev/.piggery/archive/01M3J29GDMYY3TY3MFM123CMDT-1790535275872.jsonl",
+        "counts": {
+          "batches": 29,
+          "deliveries": 23,
+          "events": 16,
+          "messages": 21,
+          "participants": 3,
+          "processes": 5,
+          "teams": 1,
+          "timers": 0
+        },
+        "name": "pg-live-cc2-0132",
+        "team": "01M3J29GDMYY3TY3MFM123CMDT"
+      }
+    }
+  ],
+  "names": {
+    "01M3K0DQ99NPEDE0VKJP5Q4AY0": "vital-plain",
+    "01M3K6K0JM8QF0KGXSFEV7SX8J": "icy-oasis"
+  },
+  "protocol_version": 1,
+  "projects": [
+    {
+      "label": "…/labs/shop",
+      "path": "/home/dev/src/labs/shop",
+      "units": [
+        {
+          "kind": "solo",
+          "id": "01M3K0DQ99NPEDE0VKJP5Q4AY0"
+        },
+        {
+          "kind": "solo",
+          "id": "01M3K6K0JM8QF0KGXSFEV7SX8J"
+        }
+      ]
+    },
+    {
+      "label": "…/labs/api",
+      "path": "/home/dev/src/labs/api",
+      "units": [
+        {
+          "kind": "team",
+          "id": "01M3GVR8PCZ674T5TAZX6825F8",
+          "members": [
+            {
+              "id": "01M3GVPWDFV3XCJVKDMX5M9AK5",
+              "depth": 0,
+              "prefix": "",
+              "cwd": ""
+            },
+            {
+              "id": "01M3GVWX2B1DSG3GJPXT3M8KB6",
+              "depth": 1,
+              "prefix": "├─ ",
+              "cwd": ""
+            },
+            {
+              "id": "01M3GW21TFXC36B0E3E44DHXQ6",
+              "depth": 1,
+              "prefix": "└─ ",
+              "cwd": ""
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

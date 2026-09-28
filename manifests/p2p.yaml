@@ -1,0 +1,29 @@
+# Null model: peers talk freely. Used by step-1 acceptance.
+model: p2p
+summary: Peers that talk freely and spawn more peers; no roles, no review loop.
+auto_join_role: peer   # the only role
+roles:
+  peer:
+    description: Works on its own part, talks to any peer, and can spawn peers.
+    instructions: ""            # default role card rendered by piggery
+    tools: [send, inbox, who, agent]
+    can_spawn: [peer]
+    can_pin: true               # board is a separate permission (spec 2b)
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+routing:
+  - {from: peer, to: peer, allow: true, cc: []}
+  - {from: peer, to: notify, allow: true, cc: []}
+tools: {}
+timers: []
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 5           # live workers at once
+  messages_per_participant_per_minute: 30
+  messages_per_thread: none
+  max_hops: 20             # replies in one reply_to chain
+  max_respawn_per_hour: none

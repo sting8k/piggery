@@ -1,0 +1,9 @@
+{
+  "name": "piggery-pi",
+  "private": true,
+  "type": "module",
+  "description": "piggery adapter for pi",
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

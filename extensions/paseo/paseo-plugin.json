@@ -1,0 +1,5 @@
+{
+  "id": "piggery",
+  "description": "piggery top in Paseo: teams, workers and sessions, read-only",
+  "requirements": { "paseo": ">=0.9.1" }
+}

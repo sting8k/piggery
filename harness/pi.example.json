@@ -1,0 +1,9 @@
+{
+  "cmd": "pi",
+  "args": [
+    "--mode", "rpc",
+    "-e", "/ABSOLUTE/PATH/TO/piggery/extensions/pi/index.ts"
+  ],
+  "model": "HP/glm-5.3-flash",
+  "blacklist": []
+}

@@ -1,0 +1,54 @@
+# supervisor + executors.
+# The supervisor splits work and spawns executor workers; an executor hands back with `done` or asks with
+# `ask` (declarative tools: one message of a fixed kind to whoever spawned it). The review loop
+# is the supervisor reading the handback and sending kind=rework, or closing. No extra state.
+model: supervisor-executor
+summary: A supervisor splits a goal (code, research, writing, operations…) into checkable tasks and judges each; executors do them, in parallel only when that helps.
+auto_join_role: supervisor   # the founder's role when a session founds a team from this template
+roles:
+  supervisor:
+    description: Splits the goal into checkable tasks, gives them to executors (a new executor only for parallel work), and accepts, reworks or drops each.
+    instructions_file: prompts/supervisor.md   # inlined by `piggery --admin team up`
+    tools: [send, inbox, who, agent]
+    can_spawn: [executor]
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  executor:
+    description: Does its tasks one at a time, checks each, and hands each back to the supervisor (or asks).
+    instructions_file: prompts/executor.md
+    tools: [inbox, who, done, ask]           # no free send
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+routing:
+  - {from: supervisor, to: executor, allow: true, cc: []}
+  - {from: executor, to: supervisor, allow: true, cc: []}
+  - {from: supervisor, to: notify, allow: true, cc: []}
+tools:
+  done:
+    description: Hand your finished work back to the supervisor who spawned you.
+    params: {summary: string}
+    send: {kind: handback, to: spawned_by}
+  ask:
+    description: Ask the supervisor who spawned you a question; keep working if you can.
+    params: {question: string}
+    send: {kind: ask, to: spawned_by}
+timers:
+  - {on: executor, notify: reports_to, silent_for: 20m}
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 4           # live workers at once
+  messages_per_participant_per_minute: 30
+  messages_per_thread: none
+  max_hops: 20             # replies in one reply_to chain
+  max_respawn_per_hour: none

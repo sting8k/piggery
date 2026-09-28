@@ -1,0 +1,113 @@
+{
+	"tools": [
+		{
+			"name": "send",
+			"description": "Send a message to a teammate (by name), to 'board' (team pins), or to 'notify' (a one-way notification to the operator; nothing comes back, so never wait for a reply to it). Set reply_to to the #N of the message you answer. Set expects_reply when you need an answer. Another team or a solo session is reached only gate to gate: from your team's gate, send to the team's name (it reaches that team's gate) or the solo's name; see {tool:who}.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"to": {
+						"type": "string",
+						"description": "a name (teammate, team, solo), 'board', or 'notify'"
+					},
+					"body": {
+						"type": "string",
+						"description": "message text (empty only for board op=remove)"
+					},
+					"reply_to": {
+						"type": "string",
+						"description": "#N of the message you are answering"
+					},
+					"expects_reply": {
+						"type": "boolean"
+					},
+					"kind": {
+						"type": "string",
+						"description": "free-form label, not interpreted by piggery"
+					},
+					"op": {
+						"type": "string",
+						"description": "board only: replace | remove"
+					},
+					"target": {
+						"type": "string",
+						"description": "board only: #N of the pin to replace or remove"
+					}
+				},
+				"required": [
+					"to",
+					"body"
+				]
+			}
+		},
+		{
+			"name": "inbox",
+			"description": "Read your unacknowledged piggery messages. view=board instead shows the team's pins (read-only, marks nothing as read).",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"view": {
+						"type": "string",
+						"description": "board"
+					}
+				}
+			}
+		},
+		{
+			"name": "who",
+			"description": "List your team in full (state: idle, working, awaiting_permission, gone), then one line per other team and per solo session on this machine. Teams and solo sessions talk gate to gate only (replies too): write to a team's name to reach its gate; a solo session is its own gate. If you are not your team's gate, ask your gate to relay.",
+			"parameters": {
+				"type": "object",
+				"properties": {}
+			}
+		},
+		{
+			"name": "agent",
+			"description": "Manage worker agents. spawn: start a worker (role, name, task; the task arrives as a message that expects your reply, and its reply comes back to you as mail). stop | resume | tail: target = worker name. admit: add a solo session marked admittable in {tool:who} (target) to a role you may spawn (role). templates: list the team templates found can use (summary and roles); read it to pick one. found: create a piggery team from a template (default p2p) rooted at the current directory and become its gate; if you are in a team you leave it. close: close your team (you must be its gate); you become solo and its workers stop. reopen: open again a closed team rooted at the current directory (team = its name) and become its gate; its stopped workers and unread mail come to you. admit, found, close and reopen only when the user asks. A solo session can only use templates, found and reopen.",
+			"parameters": {
+				"type": "object",
+				"properties": {
+					"action": {
+						"type": "string",
+						"description": "spawn | stop | resume | tail | admit | templates | found | close | reopen"
+					},
+					"template": {
+						"type": "string",
+						"description": "found: team template name (default p2p)"
+					},
+					"team": {
+						"type": "string",
+						"description": "reopen: the closed team's name"
+					},
+					"role": {
+						"type": "string",
+						"description": "spawn/admit: the role"
+					},
+					"name": {
+						"type": "string",
+						"description": "spawn: the worker's name"
+					},
+					"task": {
+						"type": "string",
+						"description": "spawn: what the worker should do; resume: optional, a new task for it"
+					},
+					"cwd": {
+						"type": "string",
+						"description": "spawn: the worker's directory, relative to yours or absolute (default: yours); needs can_set_cwd; must be inside the team root or a git worktree of its repository"
+					},
+					"target": {
+						"type": "string",
+						"description": "stop/resume/tail: the worker's name; admit: the solo session's name"
+					},
+					"lines": {
+						"type": "number",
+						"description": "tail: how many records"
+					}
+				},
+				"required": [
+					"action"
+				]
+			}
+		}
+	]
+}
