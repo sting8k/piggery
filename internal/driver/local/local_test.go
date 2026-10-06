@@ -460,3 +460,42 @@ func TestKillForcesAfterTheGrace(t *testing.T) {
 	}
 	expectGone(t, child, "kill")
 }
+
+// A worker that has stopped reading its stdin does not hang whoever writes to it: the write is
+// given up on after sendWait, later writes fail at once, and the worker can still be killed (on
+// Windows a pipe takes no deadline, and the write given up on is still in the pipe).
+func TestSendToAWorkerThatDoesNotReadGivesUp(t *testing.T) {
+	d, dir := newDriver(t, "stubborn", Options{KillWait: 300 * time.Millisecond})
+	ctx := context.Background()
+	if _, err := d.Start(ctx, core.Spec{ParticipantID: "p8", RunID: "r8", Token: "tok", Cwd: dir, HarnessRef: "sess-8"}); err != nil {
+		t.Fatal(err)
+	}
+	child, _ := waitRecord(t, d, "p8", "probe_child")
+	w, err := d.live("p8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	err = w.send(strings.Repeat("x", 1<<20)) // more than any pipe buffers
+	if err == nil || !strings.Contains(err.Error(), "not read within") || time.Since(start) > sendWait+5*time.Second {
+		t.Fatalf("send = %v after %s; want it given up on after %s", err, time.Since(start), sendWait)
+	}
+	start = time.Now()
+	if err := d.Abort("p8"); err == nil || !strings.Contains(err.Error(), "broken") || time.Since(start) > time.Second {
+		t.Fatalf("send after a write given up on = %v after %s; want it refused at once", err, time.Since(start))
+	}
+	killed := make(chan error, 1)
+	go func() {
+		_, err := d.Kill(ctx, "p8")
+		killed <- err
+	}()
+	select {
+	case err := <-killed:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("kill hangs behind the write given up on")
+	}
+	expectGone(t, child, "kill")
+}
