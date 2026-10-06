@@ -224,7 +224,7 @@ Everything piggery keeps is in `~/.piggery`. Some of it is yours to edit; the re
 | `hooks/notify.d/` | yes | your notification hooks (above) |
 | `rules/*.md`, any file you name | yes | your own rules for `prompts:` (below); `rules/general-policy.md` comes with piggery for `lead-peer` and `slp` |
 | `serve.log` | read | the daemon's log: **where problems are written** |
-| `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential |
+| `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential (on Windows the daemon listens on a named pipe, for your user only, and `piggery.pipe` holds its name instead of `piggery.sock`) |
 | `logs/`, `run/`, `sessions/`, `archive/`, `backups/`, `cache/`, `plugins/` | no | worker logs, scratch of running workers, session data, gc archives, database copies, cached reads, copies of piggery's adapters |
 | `claude/`, `paseo/` | no | what `setup claude` and `setup paseo` install |
 
