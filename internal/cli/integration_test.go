@@ -80,7 +80,7 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 		{"dsh", 10, "31ebb6dfa51a"},
 		{"claude", 1, "ca51aeba0c80"},
 		{"codex", 1, "c914fad6023c"},
-		{"paseo", 3, "93664ce8a897"},
+		{"paseo", 4, "489ba22e2c79"},
 	} {
 		if runtime.GOOS == "windows" && (want.name == "claude" || want.name == "codex") {
 			continue // their hook commands are written in another form there (hookcmd_windows.go): the unix run holds the digest
