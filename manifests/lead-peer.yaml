@@ -1,0 +1,43 @@
+# lead + peers. The Human talks to the Lead (the session that founds the team); the Lead owns the
+# plan and integration and spawns Peers that own separate scopes. A Peer may be as capable as the
+# Lead: it follows the brief by default and speaks up only with evidence that going on would miss
+# the goal or waste work. Every role talks with `send`; routing is the fence: a Peer reaches only
+# the Lead. Handbacks, questions and rework are mail with a kind. No extra state.
+template: lead-peer
+summary: A Lead owns the plan for a goal (code, research, writing, operations…) and judges the results; Peers own separate scopes and speak up with evidence when the plan is off.
+auto_join_role: lead   # the founder's role when a session founds a team from this template
+roles:
+  lead:
+    description: Splits the goal into scopes with one owner each, briefs Peers, weighs their evidence, judges each handback, and integrates.
+    instructions_file: prompts/lead-peer/lead.md   # inlined by `piggery --admin team up`
+    tools: [send, inbox, who, agent]
+    can_spawn: [peer]
+    can_pin: false
+    can_set_cwd: true
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  peer:
+    description: Owns one scope and the judgement inside it; follows the brief, speaks up with evidence when the plan is off, and hands back what is true.
+    instructions_file: prompts/lead-peer/peer.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+routing:
+  - {from: lead, to: peer, allow: true, cc: []}
+  - {from: peer, to: lead, allow: true, cc: []}
+timers:
+  - {on: peer, notify: reports_to, silent_for: 20m}
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 10           # live workers at once
+  messages_per_participant_per_minute: 30
+  max_respawn_per_hour: none

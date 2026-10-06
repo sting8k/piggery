@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -48,5 +49,29 @@ func TestCheck(t *testing.T) {
 	os.RemoveAll(filepath.Dir(bad))
 	if code, r := check(); code != 0 || len(r.Errors) != 0 || len(r.Warnings) != 1 {
 		t.Fatalf("without the bad template: exit %d, %+v", code, r)
+	}
+}
+
+// `piggery template list` reads the home as team up does: before the first setup it lists the
+// built-ins the daemon will unpack; then each template with its summary and where it comes from.
+func TestTemplateList(t *testing.T) {
+	dir := t.TempDir()
+	list := func() string {
+		var out, errOut bytes.Buffer
+		if code := Main(dir, []string{"template", "list"}, &out, &errOut); code != 0 {
+			t.Fatalf("exit %d: %s%s", code, out.String(), errOut.String())
+		}
+		return out.String()
+	}
+	if got := list(); !strings.Contains(got, "built-in") || strings.Contains(got, "yours") {
+		t.Fatalf("empty home:\n%s", got)
+	} else if !regexp.MustCompile(`(?m)^council .* taskforce `).MatchString(got) || regexp.MustCompile(`(?m)^lead-peer .* taskforce `).MatchString(got) {
+		t.Fatalf("council has a taskforce: block, lead-peer has none:\n%s", got)
+	}
+	p := filepath.Join(manifests.Dir(dir), "mine", manifests.ManifestFile)
+	os.MkdirAll(filepath.Dir(p), 0o700)
+	os.WriteFile(p, []byte("template: mine\nsummary: my  own\n  team\nroles:\n  lead:\n    instructions: \"Lead.\"\n"), 0o600)
+	if got := list(); !strings.Contains(got, "yours") || !strings.Contains(got, "my own team") || strings.Contains(got, "built-in") {
+		t.Fatalf("home with one template:\n%s", got)
 	}
 }

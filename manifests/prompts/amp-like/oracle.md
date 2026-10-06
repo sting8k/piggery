@@ -22,4 +22,4 @@ Answer in these sections, and only those that apply:
 6. When to revisit: the signals that would justify a more complex approach.
 
 Send it once: `{tool:send}` to the lead, kind `advice`, `reply_to` the brief. Then end your turn;
-the lead stops you. Do not start other agents; you can write only to the lead.
+the lead stops you. You can write only to the lead.

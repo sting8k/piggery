@@ -441,7 +441,7 @@ func TestJoinAuto(t *testing.T) {
 		t.Fatalf("after the team closed = %+v, %v; want a new solo", solo, err)
 	}
 	// A headless worker's session is never taken over, even when the worker is gone.
-	if _, err := db.Exec(`UPDATE participants SET mode='headless', state='gone' WHERE id=?`, solo.ID); err != nil {
+	if _, err := db.Exec(`UPDATE participants SET mode='headless', person=0, state='gone' WHERE id=?`, solo.ID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := e.JoinAuto(ctx, args); code(err) != core.CodeNotFound {

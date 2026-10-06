@@ -1,7 +1,9 @@
 package view
 
 import (
+	"fmt"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"slices"
 	"testing"
@@ -107,5 +109,75 @@ func TestRootsAndRelCwdFollowTheOSSeparator(t *testing.T) {
 	}
 	if got := deepestRoot(sub+"x", []string{sub}); got != sub+"x" {
 		t.Fatalf("deepestRoot of a sibling with the same prefix = %q; want itself", got)
+	}
+}
+
+// A taskforce is listed in its caller's directory, right after the caller's unit (a solo, or the team
+// of the member that called it up), a step in, whatever its own root; one whose caller is not
+// listed (another tab, never known) stays a unit of its own directory. A closed taskforce is not in
+// All (it cannot be reopened), only in the Closed tab; a closed ordinary team is in both.
+func TestTaskforceUnderCaller(t *testing.T) {
+	skipSlashPaths(t)
+	now := time.UnixMilli(1_000_000_000_000)
+	ago := func(d time.Duration) int64 { return now.Add(-d).UnixMilli() }
+	h := time.Hour
+	teams := []core.TeamState{
+		{ID: "t", Root: "/p", CreatedAt: ago(50 * h), Members: []core.MemberState{{ID: "gate", State: "idle"}}},
+		{ID: "tf-gate", Root: "/elsewhere", ParentID: "gate", CreatedAt: ago(2 * h)},
+		{ID: "tf-solo", Root: "/s", ParentID: "solo", CreatedAt: ago(1 * h)},
+		{ID: "tf-orphan", Root: "/o", ParentID: "nobody", CreatedAt: ago(1 * h)},
+	}
+	solos := []core.SoloState{{ID: "solo", Cwd: "/s", State: "idle", CreatedAt: ago(60 * h)}}
+	got := map[string][]string{}
+	for _, g := range GroupByDir(teams, nil, solos, []string{"/p", "/s", "/o", "/elsewhere"}, now) {
+		for _, u := range g.Units {
+			id := ""
+			if u.Solo != nil {
+				id = u.Solo.ID
+			} else {
+				id = u.Team.ID
+			}
+			got[g.Dir] = append(got[g.Dir], fmt.Sprintf("%s/%s/%d", id, u.Under, u.Depth))
+		}
+	}
+	want := map[string][]string{"/p": {"t//0", "tf-gate/gate/1"}, "/s": {"solo//0", "tf-solo/solo/1"}, "/o": {"tf-orphan//0"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	var keys []string // a taskforce is part of its caller's project, not a tab of its own
+	for _, tab := range ProjectTabs(core.State{Teams: teams[:2], Solos: solos}, now) {
+		keys = append(keys, tab.Key)
+	}
+	if want := []string{"", "/p", "/s"}; !slices.Equal(slices.Sorted(slices.Values(keys)), want) {
+		t.Fatalf("project tabs %q, want %q", keys, want)
+	}
+	st := core.State{Teams: teams[:1], Closed: []core.ClosedTeam{
+		{TeamState: core.TeamState{ID: "tf-closed", Root: "/p", ParentID: "gate"}, ClosedAt: ago(time.Minute)},
+		{TeamState: core.TeamState{ID: "plain-closed", Root: "/p"}, ClosedAt: ago(time.Minute)},
+	}}
+	ids := func(tab string) (out []string) {
+		for _, g := range Groups(st, tab, now) {
+			for _, u := range g.Units {
+				out = append(out, u.Team.ID)
+			}
+		}
+		return out
+	}
+	if all, closed := ids(""), ids(TabClosed); !slices.Equal(all, []string{"t", "plain-closed"}) || !slices.Equal(closed, []string{"tf-closed", "plain-closed"}) {
+		t.Fatalf("All lists %v, Closed lists %v", all, closed)
+	}
+}
+
+// A tab is named by its directory's last element; only directories whose names clash get parent
+// elements, until they differ.
+func TestTabLabels(t *testing.T) {
+	skipSlashPaths(t)
+	dirs := []string{"/w/a/api", "/w/b/api", "/w/web", "/"}
+	gs := make([]DirGroup, len(dirs))
+	for i, d := range dirs {
+		gs[i].Dir = d
+	}
+	if got, want := tabLabels(gs), []string{"a/api", "b/api", "web", "/"}; !slices.Equal(got, want) {
+		t.Fatalf("labels %q, want %q", got, want)
 	}
 }

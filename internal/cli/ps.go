@@ -119,10 +119,22 @@ func psLines(r proto.PsResult, now time.Time, stats map[string]view.Stats, cols 
 	for _, d := range view.BuildList(view.ListInput{State: r.State, Tab: view.TabOpen, Now: now, Stats: stats}).Dirs {
 		out = append(out, psLine{kind: "dir", text: d.Label})
 		for _, b := range d.Blocks {
+			in := strings.Repeat("    ", b.Depth) // a taskforce is drawn a level in under its caller: its line under the caller's row, its members one more in
 			if h := b.Head; h != nil {
 				t := teams[h.ID]
-				out = append(out, psLine{kind: "team", text: fmt.Sprintf("  team %s  gate=%s  held=%d unacked=%d",
-					t.Name, cmp.Or(t.Gate, "(none)"), t.Held, t.Unacked)})
+				tpl := ""
+				if h.Template != "" {
+					tpl = " [" + h.Template + "]"
+				}
+				word, caller := "team", ""
+				if h.Taskforce {
+					word = "taskforce"
+					if h.Caller != "" {
+						caller = "  caller=" + h.Caller
+					}
+				}
+				out = append(out, psLine{kind: "team", text: fmt.Sprintf("  %s%s %s%s  gate=%s  held=%d unacked=%d%s",
+					in, word, t.Name, tpl, cmp.Or(t.Gate, "(none)"), t.Held, t.Unacked, caller)})
 			}
 			for _, row := range b.Rows {
 				switch row.Kind {
@@ -150,9 +162,9 @@ func psLines(r proto.PsResult, now time.Time, stats map[string]view.Stats, cols 
 					val := vals(row)
 					val["role"] = row.Role
 					out = append(out, psLine{kind: "member", worker: worker, text: strings.TrimRight(fmt.Sprintf("    %-22s%s last turn %-9s %s",
-						row.Prefix+row.Name, fields(val), turn, strings.Join(tags, " ")), " ")})
+						in+row.Prefix+row.Name, fields(val), turn, strings.Join(tags, " ")), " ")})
 				case view.KindGone:
-					out = append(out, psLine{kind: "gone", text: fmt.Sprintf("    %-22s✗ gone  for %s", row.Name, since(row.SinceAt, now))})
+					out = append(out, psLine{kind: "gone", text: fmt.Sprintf("    %-22s✗ gone  for %s", in+row.Name, since(row.SinceAt, now))})
 				}
 			}
 		}
@@ -182,10 +194,11 @@ type psProject struct {
 }
 
 type psUnit struct {
-	Kind    string     `json:"kind"`          // team, closed (a team closed recently: see closed[]), solo
-	ID      string     `json:"id"`            // the team's id, or the solo's participant id
-	Cwd     string     `json:"cwd,omitempty"` // solo: as ps shows it ("" the directory, ./sub, ~/…)
-	Ctx     *int       `json:"ctx,omitempty"` // solo: as a member's, from its transcript
+	Kind    string     `json:"kind"`            // team, closed (a team closed recently: see closed[]), solo
+	ID      string     `json:"id"`              // the team's id, or the solo's participant id
+	Under   string     `json:"under,omitempty"` // a taskforce: the participant that called it up, whose unit it follows
+	Cwd     string     `json:"cwd,omitempty"`   // solo: as ps shows it ("" the directory, ./sub, ~/…)
+	Ctx     *int       `json:"ctx,omitempty"`   // solo: as a member's, from its transcript
 	Turns   *int       `json:"turns,omitempty"`
 	Members []psMember `json:"members,omitempty"`
 }
@@ -226,7 +239,7 @@ func psProjects(r proto.PsResult, stats map[string]view.Stats) []psProject {
 				pr.Units = append(pr.Units, su)
 				continue
 			}
-			tu := psUnit{Kind: "team", ID: u.Team.ID, Members: []psMember{}}
+			tu := psUnit{Kind: "team", ID: u.Team.ID, Under: u.Under, Members: []psMember{}}
 			if u.Closed != nil {
 				tu.Kind = "closed"
 			}

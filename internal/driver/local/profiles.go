@@ -76,11 +76,12 @@ func DefaultProfiles(dir string) []struct {
 
 // FillProfile adds to the profile at path every key of def it lacks, with def's value, after
 // the keys it has; nothing it has changes. A file the driver would refuse (not JSON, a wrong
-// type) is not touched: the error says why. No file: nothing to do.
+// type) is not touched: the error says why. No file: def is written whole (dir 0700, file 0600,
+// indented, as `piggery setup` writes it) and every key is reported as added.
 func FillProfile(path string, def any) ([]string, error) {
 	cur, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return writeProfile(path, def)
 	}
 	if err != nil {
 		return nil, err
@@ -116,9 +117,29 @@ func FillProfile(path string, def any) ([]string, error) {
 	return added, os.Rename(tmp, path)
 }
 
+func writeProfile(path string, def any) ([]string, error) {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return nil, err
+	}
+	b, err := json.MarshalIndent(def, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o600); err != nil {
+		return nil, err
+	}
+	defs, _ := jsonobj.Parse(b)
+	var keys []string
+	for _, m := range defs {
+		keys = append(keys, m.Key)
+	}
+	return keys, os.Rename(tmp, path)
+}
+
 // CheckProfiles reads every worker profile file under dir that exists with the loader its driver
 // uses at a launch, and returns what that loader refuses (not JSON, a wrong type, a pi or dsh
-// profile with no cmd). A harness with no profile is not a problem here: setup writes it. It
+// profile with no cmd). A harness with no profile is not a problem here: setup and the daemon's start write it. It
 // changes nothing.
 func CheckProfiles(dir string) (errs []error) {
 	for _, p := range []struct {

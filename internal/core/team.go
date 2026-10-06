@@ -7,11 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"path/filepath"
 	"slices"
 	"strings"
 )
 
-// TeamUp creates a team from a manifest. The name must not clash with an open team.
+// TeamUp creates a team from a manifest. An explicit name must not clash with an open team; with
+// none, the team is named after its directory, with a free suffix, as `agent found` does.
 func (e *Engine) TeamUp(ctx context.Context, a TeamUpArgs) (Team, error) {
 	m, warnings, err := loadManifest(a.Manifest)
 	if err != nil {
@@ -22,11 +24,15 @@ func (e *Engine) TeamUp(ctx context.Context, a TeamUpArgs) (Team, error) {
 		return Team{}, err
 	}
 	name := strings.TrimSpace(a.Name)
-	if name == "" {
-		name = m.Template
-	}
 	var team Team
 	err = e.inTx(ctx, func(t *txn) error {
+		name := name // a retry of this transaction names the team again
+		if name == "" {
+			var err error
+			if name, err = t.freeTeamName(filepath.Base(cwd)); err != nil {
+				return err
+			}
+		}
 		var existing string
 		err := t.QueryRowContext(t.ctx, `SELECT id FROM teams WHERE name=? AND closed_at IS NULL`, name).Scan(&existing)
 		if err == nil {
@@ -74,6 +80,9 @@ func validManifest(text string) (manifest, error) {
 		return m, err
 	}
 	if err := validateRoles(m); err != nil {
+		return m, err
+	}
+	if err := validateTaskforce(m); err != nil {
 		return m, err
 	}
 	for k := range m.Limits {
@@ -167,12 +176,12 @@ func (e *Engine) Join(ctx context.Context, a JoinArgs) (JoinResult, error) {
 		}
 		res = JoinResult{ID: newID(t.now), Token: token, RunID: newID(t.now), TeamID: teamID}
 		if _, err := t.ExecContext(t.ctx, `INSERT INTO participants
-			(id, run_id, kind, harness, mode, name, cwd, team_id, role, state, state_since, last_activity, token_hash, created_at)
-			VALUES (?,?,?,?,?,?,?,?,?,'idle',?,?,?,?)`,
+			(id, run_id, kind, harness, mode, name, cwd, team_id, role, state, state_since, last_activity, token_hash, created_at, person)
+			VALUES (?,?,?,?,?,?,?,?,?,'idle',?,?,?,?,1)`,
 			res.ID, res.RunID, kind, harness, mode, name, cwd, teamID, a.Role, t.now, t.now, hashToken(token), t.now); err != nil {
 			return internal(err)
 		}
-		return nil
+		return t.gateIfNone(teamID, res.ID)
 	})
 	if err != nil {
 		return JoinResult{}, err
@@ -270,7 +279,9 @@ func (e *Engine) Log(ctx context.Context, a LogArgs) ([]Event, error) {
 	return out, internal(rows.Err())
 }
 
-// modeHeadless marks a spawned worker. Only spawn sets it; nothing else may set or change it.
+// modeHeadless: the daemon runs this participant now, a spawned worker or a person's session a mail
+// woke (wake.go; the person's join sets the mode it reports again). Whose session it is lives in
+// participants.person, which never changes.
 const modeHeadless = "headless"
 
 func orDefault(s, def string) string {

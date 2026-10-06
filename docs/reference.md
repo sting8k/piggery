@@ -10,16 +10,16 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 
 | Command | What it does |
 |---|---|
-| `setup [pi\|claude\|codex\|omp\|dsh\|opencode\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys, and show where each harness stands) |
+| `setup [pi\|claude\|codex\|omp\|dsh\|opencode\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys (the daemon does the same at start), and show where each harness stands) |
 | `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, opencode, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
 | `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
 | `skills` | Print the guide for agents |
-| `team up <template\|path.yaml> [--cwd D] [--name N]` | Start a team from a template in `~/.piggery/templates`, or a manifest file |
-| `team down <team>` | Close a team: workers stopped, nothing acked |
+| `team down <team>` | Close a team: workers stopped, nothing acked; a session that was a member goes on as a solo under its old name (`name-2` when a live solo or an open team has it) |
+| `template list` | The templates a team can be founded from: name, origin (`built-in` or `yours`), `taskforce` for one a session can call up (a column that is there when any is) and summary, from `~/.piggery/templates` (the built-ins before the first `setup`); on a terminal the summary is cut to the window, piped it is whole |
 | `template new <name> [--from <built-in>]` | Copy a built-in (default `p2p`) to `~/.piggery/templates/<name>` |
-| `ps [--json\|--view]` | Daemon, teams, members, solo sessions and pending mail, once; `--view` prints what `top` shows (rows, header counts, events, the latest notices as `notices`, the update notice as `daemon.update`, each row's actions and Overview) as one JSON document with a `version` field, for the Paseo plugin |
-| `top` | The same, live, with context, turns and the latest events and notices (Notices at the bottom left once there is a notice, Events on the right, split where the list and the Overview are; stacked in a narrow window); its header says `vX available: piggery update` when a newer release is out; `↑/↓` select (`PgUp`/`PgDn`, `Home`/`End` in a long list, which scrolls under its header; `↑ N`/`↓ N` on the border count hidden lines), `enter` opens or closes (a member's details, a team's members, a team's gone-members line; kept for the next `top`), `t` switches Overview and Tail, `e` opens the events list (folded to the latest event by default; kept for the next `top`), `n` opens or closes the Notices box (the latest notices; folded to the newest one by default, kept for the next `top`, like `e`), `x` kills the selected headless worker (asks once); a click on the model (blue, `▾`) in a live headless worker's Overview, or `M`, opens a picker for its model and thinking level (`enter` or a double-click applies, `esc` closes) |
+| `ps [--json\|--view]` | Daemon, teams (each with the template it was founded from, `teams[].template` in `--json`; a taskforce is listed right under its caller, a step in, as `taskforce NAME ... caller=<name>`, and has `parent` and `parent_id` in `--json`, and `under` on its unit in `projects`), members, solo sessions and pending mail, once; `--view` prints what `top` shows (rows, header counts, events, the latest notices as `notices`, the update notice as `daemon.update`, each row's actions and Overview) as one JSON document with a `version` field, for the Paseo plugin (a taskforce's block has `under`, its caller's id, and `depth`; its head has `taskforce` and `caller`) |
+| `top` | The same, live (a taskforce sits a step in under its caller, with a `taskforce` label and `for <caller>` after its name; once closed it is only in the Closed tab until gc), with context, turns and the latest events and notices (Notices at the bottom left once there is a notice, Events on the right, split where the list and the Overview are; stacked in a narrow window); tabs: All, then one per project (a directory; ones with someone alive first), then Closed, switched with `←/→`, `tab`/`shift+tab` or a click; a tab is named by its directory's last name, with parent names added when two clash (`a/api`, `b/api`), and when they do not all fit the bar slides, with `‹ +N` and `+N ›` for the ones left out. All lists only what is alive: no team whose members are all gone, no gone solo, no closed team (a project tab lists all of its directory, and Closed the closed teams). A taskforce has no tab of its own (`ps` has no tabs); the header says `vX available: piggery update` when a newer release is out; `↑/↓` select (`PgUp`/`PgDn`, `Home`/`End` in a long list, which scrolls under its header; `↑ N`/`↓ N` on the border count hidden lines), `enter` opens or closes (a member's details, a team's members, a team's gone-members line; kept for the next `top`), `t` switches Overview and Tail, `e` opens the events list (folded to the latest event by default; kept for the next `top`), `n` opens or closes the Notices box (the latest notices; folded to the newest one by default, kept for the next `top`, like `e`), `x` kills the selected headless worker (asks once); a click on the model (blue, `▾`) in a live headless worker's Overview, or `M`, opens a picker for its model and thinking level (`enter` or a double-click applies, `esc` closes) |
 | `tail <worker> [-n N] [-f] [--team T]` | A worker's log or a session's transcript, readable; `--json` raw; `--view` the readable lines with their kind, for the Paseo plugin |
 | `log [--after SEQ] [--team T] [--limit N]` | Decisions and lifecycle events |
 | `abort <x> [--team T]` | Cancel x's current turn; it stays alive |
@@ -30,7 +30,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `why <from> <to> [--team T]` | Every gate check for a send; nothing is sent |
 | `gc --closed-before DURATION [--dry-run]` | Archive, verify and delete closed teams and gone solo sessions |
 | `archive show <file> [--table T]` | Print a gc archive (local, no daemon) |
-| `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon and `team up` use. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
+| `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon uses when it founds a team. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
 | `doctor` | Findings about the daemon's state; exit 1 when any |
 | `shutdown` / `restart` | Stop the daemon (workers stopped), or stop and start it again from this binary |
 | `update [--check] [--force]` | Install the latest release in place; `--force` for a build from source (`dev`, `dev-<sha>`); `--check` prints the current and latest versions and `vX available` when a newer one is out |
@@ -62,8 +62,8 @@ Environment: `PIGGERY_DISABLED=1` makes an adapter inert (a session that must no
 | `gc.archive_keep` | `30d` | Delete gc archives older than this, or `off`; also for a manual gc |
 | `display.columns` | `[role, state, harness, model, ctx, turns, unacked, age, since, cwd]` | Columns `top` and `ps` show after the name, in order (`top` has no `unacked` column: its header, team lines and details give it); **live**, read on every run. An unknown name warns and shows the defaults; `-` where a row has no value, `model` is the id without its provider, `cwd` is blank in the project directory itself |
 | `update.check` | `true` | Once a day the daemon asks GitHub `releases/latest` (the call `update --check` makes) and keeps the tag in `cache/update.json`; while a newer release exists `top`, `ps --view` (`daemon.update`), `setup` and `update --check` say `vX available: piggery update`. Nothing is installed. A build from source (`dev`, `dev-<sha>`) never asks, a failed call is silent and tried again the next day; `false` turns it off (the daemon reads it at its start) |
-| `spawn.allowed_roots` | `[]` | Absolute directories outside a team's root where a worker may be placed with a `cwd` (the root and its repo's git worktrees always may) |
-| `prompts` | `[]` | Your files by role: a list of `{file, roles}`; `file` is relative to `~/.piggery` or absolute; `roles` are `<role>`, `<template>/<role>`, `<template>/*` (every role of that template), `*` (every role of every template, and solo) or `solo`; a file several entries name is added once. The list needs a restart; a file is read at each session start. A bad entry is skipped with a line in `serve.log` |
+| `spawn.allowed_roots` | `[]` | Absolute directories outside a team's root where a worker may be placed with a `cwd` (the root and its repo's git worktrees always may); a taskforce's `cwd` (`spawn template=`) has the same bounds |
+| `prompts` | `[]`, then the entry below | Your files by role: a list of `{file, roles}`; `file` is relative to `~/.piggery` or absolute; `roles` are `<role>`, `<template>/<role>`, `<template>/*` (every role of that template), `*` (every role of every template, and solo) or `solo`; a file several entries name is added once. The list needs a restart; a file is read at each session start. A bad entry is skipped with a line in `serve.log`. piggery ships `rules/general-policy.md` (own the outcome, question a mechanism before patching it, keep tests and docs minimal) for `lead-peer/*` and `slp/*`: `setup` and the daemon write the file and add its entry once; an entry or file you remove stays removed, and a file you edit is not overwritten |
 
 ## harness/<harness>.json
 
@@ -81,17 +81,17 @@ resume. Missing keys are added with their defaults; `setup --force` writes the d
 | `disabled_tools` | dsh | dsh's subagent, messaging, plan and goal tools | Same, a list of tool names |
 | `disabled_tools` | opencode | `question` (asks you), `task` (starts agents) | Same, a list of tool names; every other permission is allowed (an `ask` would hang a headless worker) |
 | `disable_claude_code` | opencode | `false` | `true` keeps the skills and `CLAUDE.md` of your `~/.claude` out of an opencode worker (`OPENCODE_DISABLE_CLAUDE_CODE`); by default a worker runs with your opencode setup |
-| `tested_versions` | all | the version piggery was tested with | `setup` and `doctor` warn about another one |
+| `tested_versions` | all | the versions piggery was tested with | `setup` and `doctor` warn about a harness older than the oldest of them (a newer one is not flagged); a version that does not parse is not flagged |
 
 ## Manifest
 
-`~/.piggery/templates/<name>/manifest.yaml`. Frozen into a team when it is brought up: a change
+`~/.piggery/templates/<name>/manifest.yaml`. Frozen into a team when it is founded: a change
 applies to the next team only. A manifest with a key this list does not have, or a wrong value, is
-refused with the reason when the team is brought up.
+refused with the reason when a team is founded from it.
 
 | Key | Default | Meaning |
 |---|---|---|
-| `template` | required | The template's name; also the default team name |
+| `template` | required | The template's name (`top` and `ps` show it in brackets after a team's name, unless it is the team's name) |
 | `summary` | `""` | One line, when to use it (shown when an agent lists templates) |
 | `auto_join_role` | `""` | The role the founding session takes; needed when there are several roles |
 | `roles.<r>.description` | `""` | One line, what the role does |
@@ -105,6 +105,7 @@ refused with the reason when the team is brought up.
 | `roles.<r>.spawn.allow_tools` | `[]` | Tools the harness profile turns off that this role keeps |
 | `routing[]` | none = all denied | `{from, to, allow, cc}`; the first rule matching a sender and receiver decides; `cc` roles get a copy; a `to: notify` line is ignored with a warning (`piggery check` shows it), since only piggery writes to `notify` |
 | `timers[]` | `[]` | `{on: <role>, silent_for: <duration>, notify: <role\|reports_to>}`: one notice when a working member has no turn end for that long; `notify: notify` is ignored |
+| `taskforce.idle_for` | none | A top-level `taskforce:` block makes the template callable as a taskforce (`spawn template=`: a temporary team that reports to the caller). `idle_for` (a duration; the built-in `council`, `dual-lens` and `advisor` use `20m`): when every member has been idle that long, the caller gets one notice per idle stretch. Only its caller closes a taskforce (`close team=<name>`; a close from inside it, its chair included, is refused). It also closes with its caller and when its chair stops (gone, left or parked): the other members are stopped as with `team down` and the caller gets one notice; a closed taskforce is never reopened. A key in the block that piggery does not know is ignored, and `piggery check` warns. All taskforce keys live in this block, so a binary that does not know it runs the template as a normal one |
 | `limits.depth` | none | How deep spawn chains may go |
 | `limits.concurrency` | none | Live workers at once (the built-ins set 10) |
 | `limits.messages_per_participant_per_minute` | none | Flood guard; a mail over it is held until you `release` it |
@@ -135,8 +136,8 @@ at your next prompt.
 (after you move the binary it points them at the new place). `setup remove <harness>` takes out
 exactly that. Copies piggery unpacks start with a `managed by piggery` line: do not edit them, and a directory
 there that is not piggery's is left alone. Each installed thing has an integration version, raised
-only when what is installed changes, so a new build alone never makes an install outdated. pi, omp
-and dsh copies with a lower version are updated by the daemon at its start; claude, codex and paseo
+only when what is installed changes, so a new build alone never makes an install outdated. pi, omp,
+dsh and opencode copies with a lower version are updated by the daemon at its start; claude, codex and paseo
 are never changed on their own, only reported: `piggery setup --outdated` updates them. `piggery setup` alone (and `doctor`) shows each
 harness's version and problems, each with its fix, and `vN < vM` for an outdated install.
 
@@ -176,7 +177,7 @@ file) is not run; `piggery check` warns about it. `setup notify` writes and list
 | `reply` | the gate finished a turn on team mail and sent nothing: its answer is in its session |
 | `settled` | the gate sent its last message and no member is working or has mail waiting |
 | `failed` | the gate's turn on team mail failed: that mail waits for new mail to be given again |
-| `gate_lost` | a team has no live member left (its mail and workers wait for the next gate) |
+| `gate_lost` | a team's gate left and the next one is not live, or no member can be the gate (its mail and workers wait for it) |
 
 Only the engine writes to `notify`: an agent's send to it is refused, and a `to: notify` routing
 line or `notify: notify` timer is ignored with a warning.
@@ -211,4 +212,5 @@ line or `notify: notify` timer is ignored with a warning.
 ## Harness versions
 
 Tested with pi 0.87.1, Claude Code 2.1.283, Codex 0.157.1, omp 18.4.2, dsh 0.2.0-rc.1 and opencode 1.18.34; `piggery
-setup` and `doctor` warn about another version.
+setup` and `doctor` warn only about a version older than the oldest tested one (a pre-release is older than its
+release); newer ones are not flagged.

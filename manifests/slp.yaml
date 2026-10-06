@@ -1,10 +1,11 @@
 # slp: Supervisor - Lead - Peer, lanes (after vhlam.com/article/agent-orchestration-multi-agent-slp).
 # Roles are responsibility, authority and escalation, not personas. The Human talks to the
 # Supervisor (the session that founds the team); the Supervisor opens lanes, one Lead each, in the
-# team root or a git worktree per lane; the Lead splits its lane into scopes for Peers. The Supervisor may tell a Peer
-# something directly, and routing copies the Lead. Every role talks with `send`; routing is the
-# fence: a Peer reaches only the Lead, a Lead the Supervisor and its Peers. Handbacks, questions and
-# arguments are mail, with a kind where it helps. The Lead keeps the lane's plan on the board.
+# team root or a git worktree per lane; the Lead splits its lane into scopes for Peers. The Supervisor
+# watches a lane through its Lead's log and talks only to Leads; a Lead writes to its Peers as a
+# person would, so a Peer sees only its work and the one who gives it. Every role talks with `send`;
+# routing is the fence: a Peer reaches only the Lead, a Lead the Supervisor and its Peers.
+# Handbacks, questions and arguments are mail, with a kind where it helps. No board.
 template: slp
 summary: Lanes of work (code, research, writing, operations…) where the Human sets direction through a Supervisor, a Lead owns the plan and integration, and Peers own separate scopes and may question the premise.
 auto_join_role: supervisor   # the founder's role when a session founds a team from this template
@@ -14,7 +15,7 @@ roles:
     instructions_file: prompts/slp/supervisor.md   # inlined by `piggery --admin team up`
     tools: [send, inbox, who, agent]
     can_spawn: [lead]
-    can_pin: true
+    can_pin: false
     can_set_cwd: true
     spawn:                 # how piggery starts this role's workers
       harness: inherit       # inherit: the main session's harness, else config.yaml harness
@@ -22,11 +23,11 @@ roles:
       thinking: inherit      # inherit: same chain as model
       allow_tools: []      # native tools the harness profile turns off that this role keeps
   lead:
-    description: Holds the lane's plan on the board, splits it into scopes with one owner each, judges the evidence, and integrates.
+    description: Owns the lane's plan, splits it into scopes with one owner each, judges the evidence, and integrates.
     instructions_file: prompts/slp/lead.md
     tools: [send, inbox, who, agent]
     can_spawn: [peer]
-    can_pin: true
+    can_pin: false
     can_set_cwd: true
     spawn:                 # how piggery starts this role's workers
       harness: inherit       # inherit: the main session's harness, else config.yaml harness
@@ -50,7 +51,6 @@ routing:
   - {from: lead, to: supervisor, allow: true, cc: []}
   - {from: lead, to: peer, allow: true, cc: []}
   - {from: peer, to: lead, allow: true, cc: []}
-  - {from: supervisor, to: peer, allow: true, cc: [lead]}   # the Lead sees what the Supervisor tells a Peer
 timers:
   - {on: peer, notify: reports_to, silent_for: 20m}
   - {on: lead, notify: reports_to, silent_for: 30m}

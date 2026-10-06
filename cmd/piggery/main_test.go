@@ -35,12 +35,12 @@ func TestAdminTeamUpOnCleanHome(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("team up on clean home: %v\n%s", err, out)
 	}
-	// The shipped supervisor-executor manifest uses instructions_file, which core rejects: the CLI must
+	// The shipped lead-peer manifest uses instructions_file, which core rejects: the CLI must
 	// inline it (relative to the manifest) before team up.
-	cmd = exec.Command(bin, "--admin", "team", "up", "supervisor-executor", "--cwd", repo)
+	cmd = exec.Command(bin, "--admin", "team", "up", "lead-peer", "--cwd", repo)
 	cmd.Env = append(os.Environ(), homeEnv(home)...)
 	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("team up supervisor-executor: %v\n%s", err, out)
+		t.Fatalf("team up lead-peer: %v\n%s", err, out)
 	}
 }
 
@@ -83,7 +83,7 @@ func TestMCPThroughMain(t *testing.T) {
 		}
 		return out
 	}
-	run(nil, "", "--admin", "team", "up", "p2p", "--cwd", repo)
+	run(nil, "", "--admin", "team", "up", "p2p", "--cwd", repo, "--name", "p2p")
 	var j struct {
 		ID, Token string
 		RunID     string `json:"run_id"`

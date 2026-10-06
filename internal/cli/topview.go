@@ -275,7 +275,7 @@ func (m *topModel) render() string {
 	m.hits = m.hits[:0]
 	head := []string{cut.Render(m.header(now)), stRule.Render(strings.Repeat("─", width))}
 	if tabs := m.tabs(); len(tabs) > 1 {
-		head = append(head, cut.Render(m.tabBar(tabs, len(head))))
+		head = append(head, cut.Render(m.tabBar(tabs, len(head), width)))
 	}
 	sw, beside := m.sideSplit(width)
 	foot := m.band(width, height, sw, beside, now)
@@ -413,21 +413,93 @@ func (m *topModel) header(now time.Time) string {
 	return head
 }
 
-func (m *topModel) tabBar(tabs []view.Tab, y int) string {
-	var parts []string
-	x := 2
-	for _, t := range tabs {
-		label := fmt.Sprintf("%s %d", t.Label, t.Count)
-		w := lipgloss.Width(label)
-		m.hits = append(m.hits, hit{y: y, x0: x, x1: x + w, tab: t.Key, side: -1})
-		x += w + 3
+// tabGap separates the tabs of the bar.
+const tabGap = 3
+
+// tabSpan is which tabs a bar of avail cells shows, given the cells each tab's label takes: tab 0
+// (All) and sel always; of the others, from lo as many as fit, with a "‹ +N" before them when some
+// are left out at the start and a "+N ›" after them when some are left out at the end. lo moves
+// only to bring sel into view, so the bar slides one tab at a time as ←/→ moves the selection.
+// It returns the lo to keep and the last tab shown.
+func tabSpan(widths []int, sel, lo, avail int) (newLo, hi int) {
+	n := len(widths)
+	if n < 2 {
+		return 1, 0
+	}
+	marker := func(k int) int { return tabGap + 3 + len(fmt.Sprint(k)) } // "‹ +N" and "+N ›"
+	cost := func(lo, hi int) int {
+		c := widths[0]
+		for i := lo; i <= hi; i++ {
+			c += tabGap + widths[i]
+		}
+		if lo > 1 {
+			c += marker(lo - 1)
+		}
+		if hi < n-1 {
+			c += marker(n - 1 - hi)
+		}
+		return c
+	}
+	lo = min(max(lo, 1), n-1)
+	if sel < 1 {
+		lo = 1 // All: the bar starts over
+	} else if sel < lo {
+		lo = sel
+	}
+	for {
+		hi = lo - 1
+		for hi+1 <= n-1 && cost(lo, hi+1) <= avail {
+			hi++
+		}
+		if sel < 1 || hi >= sel {
+			return lo, hi
+		}
+		if lo >= sel { // not even the selected tab alone fits: show it, cut
+			return lo, sel
+		}
+		lo++
+	}
+}
+
+// tabBar is the tab bar drawn in the room of width cells (tabSpan), with a hit per tab and per end.
+func (m *topModel) tabBar(tabs []view.Tab, y, width int) string {
+	labels := make([]string, len(tabs))
+	widths := make([]int, len(tabs))
+	sel := 0
+	for i, t := range tabs {
+		labels[i] = fmt.Sprintf("%s %d", t.Label, t.Count)
+		widths[i] = lipgloss.Width(labels[i])
 		if t.Key == m.tab {
-			parts = append(parts, stTitle.Underline(true).Render(label))
-		} else {
-			parts = append(parts, stMuted.Render(label))
+			sel = i
 		}
 	}
-	return "  " + strings.Join(parts, "   ")
+	lo, hi := tabSpan(widths, sel, m.tabLo, width-2)
+	m.tabLo = lo
+	var parts []string
+	x := 2
+	add := func(text, key string, style lipgloss.Style) {
+		w := lipgloss.Width(text)
+		m.hits = append(m.hits, hit{y: y, x0: x, x1: x + w, tab: key, side: -1})
+		x += w + tabGap
+		parts = append(parts, style.Render(text))
+	}
+	style := func(i int) lipgloss.Style {
+		if i == sel {
+			return stTitle.Underline(true)
+		}
+		return stMuted
+	}
+	add(labels[0], tabs[0].Key, style(0))
+	if lo > 1 { // a click on an end moves to the neighbour that is left out
+		add(fmt.Sprintf("‹ +%d", lo-1), tabs[lo-1].Key, stMuted)
+	}
+	for i := lo; i <= hi; i++ {
+		add(labels[i], tabs[i].Key, style(i))
+	}
+	if hi < len(tabs)-1 {
+		add(fmt.Sprintf("+%d ›", len(tabs)-1-hi), tabs[hi+1].Key, stMuted)
+	}
+	return "  " + strings.Join(parts, strings.Repeat(" ", tabGap))
 }
 
 // list is the column header ("" when there are no rows) and the current tab's lines, by project
@@ -473,11 +545,11 @@ func (m *topModel) list(width int, now time.Time) (string, []string, []string) {
 		entries = append(entries, entry{text: "  " + stMuted.Render(d.Label)}) // under the NAME header
 		for _, b := range d.Blocks {
 			for _, r := range b.Sizing {
-				hidden = append(hidden, rowOf(r, cols).cells)
+				hidden = append(hidden, rowOf(r, cols, b.Depth).cells)
 			}
 			if h := b.Head; h != nil {
 				if h.Line { // All: the team's line can fold it; in its own tab the title is only a title
-					entries = append(entries, entry{id: closedRow + h.ID, text: m.teamLine(*h, m.sel == closedRow+h.ID, width)})
+					entries = append(entries, entry{id: closedRow + h.ID, text: m.teamLine(*h, m.sel == closedRow+h.ID, width, b.Depth)})
 				} else {
 					entries = append(entries, entry{text: stepIndent + stepIndent + m.teamTitle(*h, func(s lipgloss.Style) lipgloss.Style { return s }, width-6)})
 				}
@@ -486,7 +558,7 @@ func (m *topModel) list(width int, now time.Time) (string, []string, []string) {
 				entries = append(entries, entry{text: muted(stepIndent + b.NoMembers)})
 			}
 			for _, r := range b.Rows {
-				addRow(rowOf(r, cols))
+				addRow(rowOf(r, cols, b.Depth))
 			}
 		}
 	}
@@ -536,7 +608,8 @@ func (m *topModel) list(width int, now time.Time) (string, []string, []string) {
 
 // rowOf is a view row as a table row on cols: the cells as the list draws them. A member's or a
 // solo's cells are "-" where it has nothing; a team's line and a gone line leave them blank.
-func rowOf(r view.Row, cols []string) trow {
+func rowOf(r view.Row, cols []string, depth int) trow {
+	in := strings.Repeat(stepIndent, depth) // a taskforce's rows are a step in under its caller
 	mark := "▸ "
 	if r.Open {
 		mark = "▾ "
@@ -545,17 +618,21 @@ func rowOf(r view.Row, cols []string) trow {
 	blank := false
 	switch r.Kind {
 	case view.KindMember:
-		val = map[string]string{"name": memberIndent + r.Prefix + r.Name + gateTagOf(r.Gate), "role": r.Role}
+		val = map[string]string{"name": in + memberIndent + r.Prefix + r.Name + gateTagOf(r.Gate), "role": r.Role}
 	case view.KindSolo:
 		val = map[string]string{"name": soloLead + r.Name}
 	case view.KindTeam: // " team " is the pill's width and padding; here plain, dim
-		name := mark + " team  " + r.Name
+		word := " team  "
+		if r.Taskforce {
+			word = " taskforce  "
+		}
+		name := in + mark + word + r.Name
 		if r.Closed != "" {
 			name += "  " + r.Closed
 		}
 		val, blank = map[string]string{"name": name}, true
 	case view.KindGone:
-		val, blank = map[string]string{"name": memberIndent + mark + r.Name}, true
+		val, blank = map[string]string{"name": in + memberIndent + mark + r.Name}, true
 	}
 	val["state"], val["since"] = r.StateText, r.Since
 	if !blank {
@@ -572,7 +649,7 @@ func rowOf(r view.Row, cols []string) trow {
 	return trow{id: r.ID, state: r.State, dim: r.Dim, cells: cells}
 }
 
-// teamTitle is the pill, the name, `no gate` when it has none, and the held count; in room cells (0: no limit), the
+// teamTitle is the pill (team or taskforce), the name, its template in brackets, a taskforce's caller, `no gate` when it has none, and the held count; in room cells (0: no limit), the
 // part that does not fit ends in an ellipsis and what follows it is left out.
 func (m *topModel) teamTitle(t view.TeamHead, bg func(lipgloss.Style) lipgloss.Style, room int) string {
 	warn := lipgloss.NewStyle().Foreground(colWarning)
@@ -581,11 +658,21 @@ func (m *topModel) teamTitle(t view.TeamHead, bg func(lipgloss.Style) lipgloss.S
 		style lipgloss.Style
 	}
 	segs := []seg{{t.Name, stTitle}} // the gate is tagged on its member's row, not here
+	if t.Template != "" {
+		segs = append(segs, seg{" [" + t.Template + "]", stMuted})
+	}
+	if t.Caller != "" { // a taskforce says whom it works for
+		segs = append(segs, seg{" for " + t.Caller, stMuted})
+	}
 	for _, f := range t.Flags {
 		segs = append(segs, seg{" · " + f, warn})
 	}
 	// a pill tells it from the directory line above, which is its root
-	title := pill("team", colPrimary, colOnMain) + bg(stPlain).Render(" ")
+	word := "team"
+	if t.Taskforce {
+		word = "taskforce"
+	}
+	title := pill(word, colPrimary, colOnMain) + bg(stPlain).Render(" ")
 	limit := room > 0
 	room -= lipgloss.Width(title)
 	for _, s := range segs {
@@ -602,7 +689,7 @@ func (m *topModel) teamTitle(t view.TeamHead, bg func(lipgloss.Style) lipgloss.S
 // teamLine is a live team's line in All: a selection bar and a ▾/▸ mark, then its title (gate, held
 // amber); folded, also the counts of its members by state and its unacked mail. A selected line
 // is filled to width like a row.
-func (m *topModel) teamLine(t view.TeamHead, sel bool, width int) string {
+func (m *topModel) teamLine(t view.TeamHead, sel bool, width, depth int) string {
 	bg := func(s lipgloss.Style) lipgloss.Style {
 		if sel {
 			return s.Background(colSurface)
@@ -616,8 +703,9 @@ func (m *topModel) teamLine(t view.TeamHead, sel bool, width int) string {
 	if t.Open {
 		mark = "▾ "
 	}
-	room := width - 1 - 4 // as a row: the bar and the mark, and a cell of margin
-	line := bg(lipgloss.NewStyle().Foreground(colPrimary)).Render(bar) + bg(stMuted).Render(mark) + m.teamTitle(t, bg, room)
+	in := strings.Repeat(stepIndent, depth) // a taskforce is a step in under its caller, as its rows are
+	room := width - 1 - 4 - len(in)         // as a row: the bar and the mark, and a cell of margin
+	line := bg(lipgloss.NewStyle().Foreground(colPrimary)).Render(bar) + bg(stPlain).Render(in) + bg(stMuted).Render(mark) + m.teamTitle(t, bg, room)
 	if !t.Open {
 		parts := t.Counts // held is in the title, amber
 		// the counts that fit, whole, the last ones dropped first; none at all if the title takes the room

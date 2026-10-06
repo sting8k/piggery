@@ -1,8 +1,10 @@
 package view
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/sting8k/piggery/internal/core"
@@ -64,9 +66,88 @@ func Tabs(s core.State, now time.Time) []Tab {
 	return out
 }
 
-// Recent reports whether c closed within an hour of now (All lists it).
+// ProjectTabs are top's tabs: All, then one per project directory (the groups All lists, by
+// GroupByDir: projects with someone alive first, all-gone ones after), then Closed last. A project
+// tab lists everything in its directory: teams (gone members too), solos and the taskforces under
+// their callers; a taskforce has no tab of its own. Key is the directory (ListInput.Projects).
+// Without a project, All is the only tab, and with one that All lists whole there is no tab bar.
+func ProjectTabs(s core.State, now time.Time) []Tab {
+	all := Tab{Label: "All", Count: len(s.Solos)}
+	leftOut := len(s.Closed) > 0 // something All does not list
+	for _, t := range s.Teams {
+		if Dead(t) {
+			leftOut = true
+		} else {
+			all.Count += len(t.Members)
+		}
+	}
+	out := []Tab{all}
+	gs := projectGroups(s, now)
+	short := tabLabels(gs)
+	for gi, g := range gs {
+		n := 0
+		for _, u := range g.Units {
+			if u.Solo != nil {
+				n++
+			} else {
+				n += len(u.Team.Members)
+			}
+		}
+		out = append(out, Tab{Key: g.Dir, Label: short[gi], Count: n})
+	}
+	if len(s.Closed) > 0 {
+		out = append(out, Tab{Key: TabClosed, Label: "Closed", Count: len(s.Closed)})
+	}
+	if len(out) < 3 && !leftOut {
+		return out[:1]
+	}
+	return out
+}
+
+// projectGroups are the directories of every open team and solo, in All's order.
+func projectGroups(s core.State, now time.Time) []DirGroup {
+	return GroupByDir(s.Teams, nil, s.Solos, rootsOf(s), now)
+}
+
+// tabLabels are the directories' names for the tab bar: the last path element, with the parent
+// elements added, one a round, to the directories whose names clash, until they differ (a/api, b/api).
+func tabLabels(gs []DirGroup) []string {
+	parts := make([][]string, len(gs))
+	n := make([]int, len(gs))
+	for i, g := range gs {
+		parts[i] = strings.Split(strings.Trim(Home(g.Dir), "/"), "/")
+		n[i] = 1
+	}
+	label := func(i int) string {
+		ps := parts[i]
+		return cmp.Or(strings.Join(ps[max(len(ps)-n[i], 0):], "/"), "/")
+	}
+	for grown := true; grown; { // every directory of a clash grows together, one element a round
+		grown = false
+		clash := make([]bool, len(gs))
+		for i := range gs {
+			for j := range gs {
+				clash[i] = clash[i] || i != j && gs[i].Dir != gs[j].Dir && label(i) == label(j)
+			}
+		}
+		for i, c := range clash {
+			if c && n[i] < len(parts[i]) {
+				n[i]++
+				grown = true
+			}
+		}
+	}
+	out := make([]string, len(gs))
+	for i := range out {
+		out[i] = label(i)
+	}
+	return out
+}
+
+// Recent reports whether c closed within an hour of now and All lists it. A closed taskforce is
+// never listed there: it cannot be reopened, so only the Closed tab keeps it until gc.
 func Recent(c core.ClosedTeam, now time.Time) bool {
-	return now.Sub(time.UnixMilli(c.ClosedAt)) < closedRecent
+	return c.ParentID == "" && now.Sub(time.UnixMilli(c.ClosedAt)) < closedRecent
 }
 
 // Teams is every team of the snapshot, open then closed (logs, names, lookups).
@@ -97,11 +178,26 @@ func Groups(s core.State, tab string, now time.Time) []DirGroup {
 	if tab == "" || tab == tabEvery || tab == TabOpen {
 		solos = s.Solos
 	}
-	var roots []string
-	for _, t := range Teams(s) {
-		roots = append(roots, t.Root)
+	return GroupByDir(teams, closed, solos, rootsOf(s), now)
+}
+
+// projectTabGroups is what top's tab lists (ProjectTabs): All the live teams and solos; TabClosed
+// every closed team; else the one directory tab (a team all gone, a gone solo and all).
+func projectTabGroups(s core.State, tab string, now time.Time) []DirGroup {
+	switch tab {
+	case TabClosed:
+		return Groups(s, tab, now)
+	case "":
+		var teams []core.TeamState
+		for _, t := range s.Teams {
+			if !Dead(t) {
+				teams = append(teams, t)
+			}
+		}
+		solos := slices.DeleteFunc(slices.Clone(s.Solos), func(so core.SoloState) bool { return so.State == "gone" })
+		return GroupByDir(teams, nil, solos, rootsOf(s), now)
 	}
-	return GroupByDir(teams, closed, solos, roots, now)
+	return slices.DeleteFunc(projectGroups(s, now), func(g DirGroup) bool { return g.Dir != tab })
 }
 
 // OpenByDefault: a live team lists its members; a dead or closed one is one line until opened.
@@ -182,10 +278,11 @@ type Row struct {
 	Name        string   `json:"name"`             // a team row: the team's name; a gone row: "2 members"
 	Prefix      string   `json:"prefix,omitempty"` // a member: the reports_to tree's drawing (├─ └─ │)
 	Role        string   `json:"role,omitempty"`
-	Gate        bool     `json:"gate,omitempty"`   // a member: it is its team's gate
-	Closed      string   `json:"closed,omitempty"` // a team row: "closed" for a closed team, "" for an open one that is all gone
-	State       string   `json:"state"`            // as ps says it; a team or gone row: "gone"
-	StateText   string   `json:"state_text"`       // icon and word for State
+	Gate        bool     `json:"gate,omitempty"`      // a member: it is its team's gate
+	Closed      string   `json:"closed,omitempty"`    // a team row: "closed" for a closed team, "" for an open one that is all gone
+	Taskforce   bool     `json:"taskforce,omitempty"` // a team row: it is a taskforce
+	State       string   `json:"state"`               // as ps says it; a team or gone row: "gone"
+	StateText   string   `json:"state_text"`          // icon and word for State
 	Status      Status   `json:"status"`
 	Dim         bool     `json:"dim,omitempty"`
 	Open        bool     `json:"open,omitempty"`   // a team or gone row: its members are listed (in ps --view: by default)
@@ -206,25 +303,42 @@ type Row struct {
 	Tabs        []string `json:"tabs,omitempty"` // the tabs that list it (ps --view)
 }
 
+// ShownTemplate is the template top and ps show after a team's name: none when it is the name.
+func ShownTemplate(name, template string) string {
+	if template == name {
+		return ""
+	}
+	return template
+}
+
 // TeamHead is a live team's line (in All) or title (in its own tab): its name, what is wrong with it
 // (Flags), and when it is folded the counts of its members by state.
 type TeamHead struct {
-	ID     string   `json:"id"`
-	Detail string   `json:"detail"` // its key in Doc.Details
-	Name   string   `json:"name"`
-	Line   bool     `json:"line"` // the line of All: selectable (TeamRow + ID), and it folds the team
-	Open   bool     `json:"open"`
-	Flags  []string `json:"flags,omitempty"`  // for the title, amber: "no gate", "3 held"
-	Counts []string `json:"counts,omitempty"` // folded: "2 working", "1 idle", "1 waiting", "3 gone", "unacked 4"; "no members"
-	Tabs   []string `json:"tabs,omitempty"`   // the tabs that list it (ps --view)
+	ID       string   `json:"id"`
+	Detail   string   `json:"detail"` // its key in Doc.Details
+	Name     string   `json:"name"`
+	Template string   `json:"template,omitempty"` // the template the team was founded from, shown in brackets after the name
+	Line     bool     `json:"line"`               // the line of All: selectable (TeamRow + ID), and it folds the team
+	Open     bool     `json:"open"`
+	Flags    []string `json:"flags,omitempty"`  // for the title, amber: "no gate", "3 held"
+	Counts   []string `json:"counts,omitempty"` // folded: "2 working", "1 idle", "1 waiting", "3 gone", "unacked 4"; "no members"
+	Tabs     []string `json:"tabs,omitempty"`   // the tabs that list it (ps --view)
+	// Taskforce: a team a solo or a gate called up with spawn template=; Caller is that participant's
+	// name ("" when it is no longer known). It is drawn under the caller's own block (Block.Under).
+	Taskforce bool   `json:"taskforce,omitempty"`
+	Caller    string `json:"caller,omitempty"`
 }
 
 // Block is one unit of a directory: a solo (one row), a team listed as one line (its row, then its
 // members when open), or a live team (its head, then its members and its gone line).
 type Block struct {
-	Head      *TeamHead `json:"head,omitempty"`
-	Rows      []Row     `json:"rows"`                 // as listed now, in order
-	NoMembers string    `json:"no_members,omitempty"` // an open team without members: what to do
+	Head *TeamHead `json:"head,omitempty"`
+	// Under and Depth: a taskforce comes right after the block of its caller; Under is the caller's
+	// participant id and Depth the steps it is drawn in. Both are zero for any other block.
+	Under     string `json:"under,omitempty"`
+	Depth     int    `json:"depth,omitempty"`
+	Rows      []Row  `json:"rows"`                 // as listed now, in order
+	NoMembers string `json:"no_members,omitempty"` // an open team without members: what to do
 	// Sizing are the rows of every member of the team, those a fold hides included: the columns'
 	// widths come from them, so opening or closing a fold never moves a column.
 	Sizing []Row `json:"-"`
@@ -256,6 +370,9 @@ type ListInput struct {
 	Open  map[string]bool // a team id -> its members are listed (true) or it is one line (false)
 	Gone  map[string]bool // a team id -> its gone members are listed, not folded into one line
 	Stats map[string]Stats
+	// Projects: top's tabs (ProjectTabs): Tab is "" (All, only what is alive: no team that is all
+	// gone, no gone solo, no closed team), TabClosed, or a project's directory (all of it).
+	Projects bool
 	// Readable says whether piggery can read a session's transcript (a tail of it); nil: none can.
 	Readable func(*core.Transcript) bool
 }
@@ -266,6 +383,9 @@ type ListInput struct {
 func BuildList(in ListInput) List {
 	s, now := in.State, in.Now
 	groups := Groups(s, in.Tab, now)
+	if in.Projects {
+		groups = projectTabGroups(s, in.Tab, now)
+	}
 	all := in.Tab == "" || in.Tab == tabEvery // the All tab's rules
 	dirs := make([]string, len(groups))
 	for i, g := range groups {
@@ -306,7 +426,7 @@ func BuildList(in ListInput) List {
 	for gi, g := range groups {
 		d := Dir{Path: g.Dir, Label: DirLabel(short[gi]), Bucket: bucketNames[g.Bucket], Folded: g.Bucket >= bucketGone}
 		for _, u := range g.Units {
-			var b Block
+			b := Block{Under: u.Under, Depth: u.Depth}
 			switch {
 			case u.Solo != nil:
 				sl := u.Solo
@@ -324,7 +444,7 @@ func BuildList(in ListInput) List {
 				if c := u.Closed; c != nil {
 					at, word = c.ClosedAt, "closed"
 				}
-				b.Rows = []Row{{Kind: KindTeam, ID: TeamRow + t.ID, Team: t.ID, Name: t.Name, Closed: word, State: "gone", StateText: StateText("gone"), Status: StatusOf("gone"),
+				b.Rows = []Row{{Kind: KindTeam, ID: TeamRow + t.ID, Team: t.ID, Name: t.Name, Closed: word, Taskforce: t.ParentID != "", State: "gone", StateText: StateText("gone"), Status: StatusOf("gone"),
 					Dim: true, Open: open, Since: Ago(at, now)}}
 				if open {
 					for _, tr := range MemberTree(t.Members) {
@@ -334,7 +454,8 @@ func BuildList(in ListInput) List {
 			default:
 				t := u.Team
 				open := !all || IsOpen(in.Open, t.ID, true)
-				b.Head = &TeamHead{ID: t.ID, Detail: TeamRow + t.ID, Name: t.Name, Line: all, Open: open}
+				b.Head = &TeamHead{ID: t.ID, Detail: TeamRow + t.ID, Name: t.Name, Template: ShownTemplate(t.Name, t.Template), Line: all, Open: open,
+					Taskforce: t.ParentID != "", Caller: t.Parent}
 				if t.Gate == "" {
 					b.Head.Flags = append(b.Head.Flags, "no gate")
 				}
@@ -345,7 +466,7 @@ func BuildList(in ListInput) List {
 					b.Head.Counts = teamCounts(*t)
 				}
 				if open && len(t.Members) == 0 {
-					b.NoMembers = "No members. Open an agent session in " + Home(t.Root) + " and ask the gate to admit it."
+					b.NoMembers = "No members; nobody can join. Close it: piggery team down " + t.Name
 				}
 				if open {
 					kept, gone := FoldGone(t.Members)

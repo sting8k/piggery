@@ -152,7 +152,7 @@ func (e *Engine) Resume(ctx context.Context, a AdminTarget) (AgentResult, error)
 			return participant{}, w, errf(CodeInvalid, "%s's team is closed", w.name)
 		}
 		return participant{team: w.team}, w, nil // the admin: no participant, the worker's team
-	}, "")
+	}, "", false)
 }
 
 type ModelArgs struct {

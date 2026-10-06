@@ -37,7 +37,7 @@ func newFixture(t *testing.T, db *sql.DB, opts ...core.Option) fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: string(man), Cwd: t.TempDir()})
+	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: string(man), Name: "p2p", Cwd: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}

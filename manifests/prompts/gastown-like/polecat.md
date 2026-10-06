@@ -20,4 +20,4 @@ is your assignment, so do not wait for a go-ahead.
   Bring the integration branch into your branch in your worktree, resolve what is yours to
   resolve, check again, and send a new `mr` with `reply_to` the rework. A conflict that needs a
   choice between your result and another task's: ask the mayor instead.
-- Do not start other agents; you can write only to the refinery and the mayor.
+- You can write only to the refinery and the mayor.

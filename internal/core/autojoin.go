@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // JoinAutoArgs is `join.auto`: a harness session with no PIGGERY_* registers with the daemon. No
@@ -61,6 +62,20 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 	if err != nil {
 		return JoinResult{}, internal(err)
 	}
+	// A person's session that mail woke as a worker (wake.go): the person takes it back, so the
+	// worker stops first, outside any transaction. Mail could wake it again in the gap: a few tries.
+	for try := 0; try < takeBackTries; try++ {
+		w, ok, err := e.wokenSession(ctx, a.HarnessRef)
+		if err != nil {
+			return JoinResult{}, err
+		}
+		if !ok {
+			break
+		}
+		if err := e.takeBack(ctx, w); err != nil {
+			return JoinResult{}, err
+		}
+	}
 	var res JoinResult
 	err = e.inTx(ctx, func(t *txn) error {
 		if a.Host != "" { // the same process again (its MCP server and hooks, or /clear): no new participant
@@ -88,15 +103,18 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 		// The newest row wins: after leaving a team (found) the old row is gone in the old team.
 		// A row that left (found elsewhere, replaced or merged by reopen) never comes back.
 		var mode, host sql.NullString
-		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, mode, host FROM participants
+		var person bool
+		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, mode, host, person FROM participants
 			WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?)) AND left_at IS NULL
 			AND (team_id IS NULL OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL))
-			ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.HarnessRef, a.HarnessRef), &mode, &host)
+			ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.HarnessRef, a.HarnessRef), &mode, &host, &person)
 		switch {
-		case err == nil && mode.String == "headless":
+		case err == nil && !person:
 			// A worker's session opened by hand (e.g. to inspect it) must never take the worker over.
+			// A person's session that mail woke is taken back (takeBack, above): once it is gone.
 			return errf(CodeNotFound, "session belongs to a headless worker")
-		case err == nil && p.state != "gone" && (a.Host == "" || !host.Valid):
+		case err == nil && p.state != "gone" && (a.Host == "" || !host.Valid) && !(p.state == "parked" && mode.String != "headless"):
+			// A parked session (the respawn limit refused the wake; no process) is the person's again.
 			// Only a session that is gone can come back; a live one keeps its run and token. A
 			// live one with another host lost its process without saying so (it reported no
 			// end): the new process takes it over, as a resume.
@@ -105,7 +123,7 @@ func (e *Engine) JoinAuto(ctx context.Context, a JoinAutoArgs) (JoinResult, erro
 			res.ID, res.TeamID = p.id, p.team
 			path, format := a.transcriptCols()
 			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET run_id=?, token_hash=?, last_turn_end=NULL,
-				cwd=?, harness=COALESCE(?,harness), mode=COALESCE(?,mode), host=?, session_ref=?,
+				cwd=?, harness=COALESCE(?,harness), mode=COALESCE(?,CASE WHEN mode='headless' THEN 'interactive' ELSE mode END), host=?, session_ref=?,
 				transcript=COALESCE(?,transcript), transcript_format=COALESCE(?,transcript_format) WHERE id=?`,
 				res.RunID, hashToken(token), cwd, nullStr(a.Harness), nullStr(a.Mode), nullStr(a.Host), a.HarnessRef,
 				path, format, p.id); err != nil {
@@ -144,13 +162,20 @@ func (t *txn) moveSession(from, to string) error {
 }
 
 // insertSession adds harness session a as a new idle participant of role in teamID ("" = a
-// solo, no team and no role), named a.Name (suffixed on collision) or else a free word
-// (freeWord), and returns its id.
+// solo, no team and no role), and returns its id. Its name is a.Name (suffixed on collision); else,
+// for a solo whose session had a participant before (its team was closed), that participant's name
+// (suffixed on collision); else a free word (freeWord).
 func (t *txn) insertSession(teamID, role, cwd, run, token string, a JoinAutoArgs) (string, error) {
 	var name string
 	var err error
+	former, err := t.formerName(teamID, a.HarnessRef)
+	if err != nil {
+		return "", err
+	}
 	if n := strings.TrimSpace(a.Name); n != "" && !isReserved(n) {
 		name, err = t.freeName(teamID, n)
+	} else if former != "" {
+		name, err = t.freeSoloName(former)
 	} else {
 		name, err = t.freeWord(teamID, a.HarnessRef)
 	}
@@ -161,8 +186,8 @@ func (t *txn) insertSession(teamID, role, cwd, run, token string, a JoinAutoArgs
 	path, format := a.transcriptCols()
 	if _, err := t.ExecContext(t.ctx, `INSERT INTO participants
 		(id, run_id, kind, harness, mode, name, cwd, team_id, role, state, state_since, last_activity,
-		 token_hash, harness_ref, created_at, host, session_ref, transcript, transcript_format)
-		VALUES (?,?,'agent',?,?,?,?,?,?,'idle',?,?,?,?,?,?,?,?,?)`,
+		 token_hash, harness_ref, created_at, host, session_ref, transcript, transcript_format, person)
+		VALUES (?,?,'agent',?,?,?,?,?,?,'idle',?,?,?,?,?,?,?,?,?,1)`,
 		id, run, nullStr(a.Harness), nullStr(a.Mode), name, cwd, nullStr(teamID), nullStr(role), t.now, t.now,
 		hashToken(token), a.HarnessRef, t.now, nullStr(a.Host), a.HarnessRef, path, format); err != nil {
 		return "", internal(err)
@@ -213,4 +238,47 @@ func (t *txn) nameTaken(teamID, name string, teams bool) (bool, error) {
 		return false, internal(err)
 	}
 	return n > 0, nil
+}
+
+// wokenSession is the participant of session ref when it is a person's session that mail woke
+// (a person's row, run headless now) and its worker is not gone.
+func (e *Engine) wokenSession(ctx context.Context, ref string) (w participant, ok bool, err error) {
+	err = e.inTx(ctx, func(t *txn) error {
+		var mode sql.NullString
+		var person bool
+		p, err := scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, mode, person FROM participants
+			WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?)) AND left_at IS NULL
+			AND (team_id IS NULL OR team_id IN (SELECT id FROM teams WHERE closed_at IS NULL))
+			ORDER BY created_at DESC, rowid DESC LIMIT 1`, ref, ref), &mode, &person)
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return internal(err)
+		}
+		w, ok = p, person && mode.String == modeHeadless && p.state != "gone"
+		return nil
+	})
+	return w, ok, err
+}
+
+// takeBackTries bounds the stops one join makes (see JoinAuto).
+const takeBackTries = 3
+
+// takeBackGrace is how long a woken worker may finish its turn when its person comes back: the join
+// sits inside a hook with a budget (Codex's SessionStart: 3 s). After that Driver.Kill ends it
+// (SIGTERM, a wait of its KillWait, 2 s, then SIGKILL), so the stop takes at most takeBackGrace +
+// KillWait = 2.5 s, before the join's own work. A turn is cut then; its mail is unacked and comes
+// again.
+const takeBackGrace = 500 * time.Millisecond
+
+// takeBack stops w, a worker woken in a person's session: as agent stop, with Kill after
+// takeBackGrace. The driver interface is unchanged, the timer is ours.
+func (e *Engine) takeBack(ctx context.Context, w participant) error {
+	if d := e.runtimeFor(w.harness); d != nil && w.state != "parked" {
+		timer := time.AfterFunc(takeBackGrace, func() { d.Kill(ctx, w.id) })
+		defer timer.Stop()
+	}
+	_, err := e.stopWorker(ctx, w, "taken_back", false)
+	return err
 }

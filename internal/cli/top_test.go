@@ -83,15 +83,15 @@ func TestTopTailFollowsTheSelection(t *testing.T) {
 	}
 }
 
-// Tabs are All, each team (Closed last). Switching tabs moves the selection into the new tab; a
-// refresh keeps it while the row is there, else takes the tab's first row; a tab whose team
-// closed falls back to All.
+// Tabs are All, each project directory (Closed last). Switching tabs moves the selection into the
+// new tab; a refresh keeps it while the row is there, else takes the tab's first row; a tab whose
+// project has nothing left falls back to All.
 func TestTopTabsKeepASelection(t *testing.T) {
 	ps := proto.PsResult{State: core.State{
 		Teams: []core.TeamState{
-			{ID: "ta", Name: "a", Members: []core.MemberState{{ID: "a1", Name: "a1"}, {ID: "a2", Name: "a2"}}},
-			{ID: "tb", Name: "b", Members: []core.MemberState{{ID: "b1", Name: "b1"}}}},
-		Solos: []core.SoloState{{ID: "s1", Name: "s1"}}}}
+			{ID: "ta", Name: "a", Root: "/p/a", Members: []core.MemberState{{ID: "a1", Name: "a1"}, {ID: "a2", Name: "a2"}}},
+			{ID: "tb", Name: "b", Root: "/p/b", Members: []core.MemberState{{ID: "b1", Name: "b1"}}}},
+		Solos: []core.SoloState{{ID: "s1", Name: "s1", Cwd: "/p/b"}}}}
 	m := newTopModel(nil, "")
 	m.Update(fetched{ps: ps})
 	right := tea.KeyPressMsg{Code: tea.KeyRight}
@@ -108,21 +108,21 @@ func TestTopTabsKeepASelection(t *testing.T) {
 		m.Update(right)
 		got = append(got, m.tab+":"+m.sel)
 	}
-	if want := "ta:a2 tb:b1 :b1"; strings.Join(got, " ") != want {
+	if want := "/p/a:a2 /p/b:b1 :b1"; strings.Join(got, " ") != want {
 		t.Fatalf("tabs: got %q want %q", strings.Join(got, " "), want)
 	}
 	m.Update(right) // team a
 	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	gone := ps
-	gone.Teams = []core.TeamState{{ID: "ta", Name: "a", Members: []core.MemberState{{ID: "a1", Name: "a1"}}}, ps.Teams[1]}
+	gone.Teams = []core.TeamState{{ID: "ta", Name: "a", Root: "/p/a", Members: []core.MemberState{{ID: "a1", Name: "a1"}}}, ps.Teams[1]}
 	m.Update(fetched{ps: gone})
-	if m.tab != "ta" || m.sel != "a1" {
-		t.Fatalf("a2 left: tab %q sel %q; want ta, a1", m.tab, m.sel)
+	if m.tab != "/p/a" || m.sel != "a1" {
+		t.Fatalf("a2 left: tab %q sel %q; want /p/a, a1", m.tab, m.sel)
 	}
 	gone.Teams = gone.Teams[1:]
 	m.Update(fetched{ps: gone})
 	if m.tab != "" || m.sel != "b1" {
-		t.Fatalf("team a closed: tab %q sel %q; want All, b1", m.tab, m.sel)
+		t.Fatalf("project a emptied: tab %q sel %q; want All, b1", m.tab, m.sel)
 	}
 }
 
@@ -131,8 +131,8 @@ func TestTopTabsKeepASelection(t *testing.T) {
 func TestTopClickSelectsWhatWasDrawn(t *testing.T) {
 	ps := proto.PsResult{State: core.State{
 		Teams: []core.TeamState{
-			{ID: "ta", Name: "a", Members: []core.MemberState{{ID: "a1", Name: "a1"}, {ID: "a2", Name: "a2"}}},
-			{ID: "tb", Name: "b", Members: []core.MemberState{{ID: "b1", Name: "b1"}}}}}}
+			{ID: "ta", Name: "a", Root: "/p/a", Members: []core.MemberState{{ID: "a1", Name: "a1"}, {ID: "a2", Name: "a2"}}},
+			{ID: "tb", Name: "b", Root: "/p/b", Members: []core.MemberState{{ID: "b1", Name: "b1"}}}}}}
 	m := newTopModel(nil, "")
 	m.w, m.h = 120, 30
 	m.Update(fetched{ps: ps})
@@ -153,13 +153,13 @@ func TestTopClickSelectsWhatWasDrawn(t *testing.T) {
 	}
 	x, y = find("b 1")
 	m.Update(tea.MouseClickMsg{X: x + 1, Y: y, Button: tea.MouseLeft})
-	if m.tab != "tb" || m.sel != "b1" {
+	if m.tab != "/p/b" || m.sel != "b1" {
 		t.Fatalf("click on tab b: tab %q sel %q", m.tab, m.sel)
 	}
 }
 
-// A closed team is listed as one line: in All while it closed within the hour, in Closed until gc
-// removes it; enter on its line expands it into its members, which can then be selected.
+// A closed team is only in the Closed tab, until gc removes it, never in All (which lists what is
+// alive); there it is one line, and enter on it expands it into its members, which can be selected.
 func TestTopClosedTeamsExpand(t *testing.T) {
 	now := time.Now()
 	ps := proto.PsResult{State: core.State{
@@ -171,50 +171,51 @@ func TestTopClosedTeamsExpand(t *testing.T) {
 				ClosedAt: now.Add(-2 * time.Hour).UnixMilli()}}}}
 	m := newTopModel(nil, "")
 	m.Update(fetched{ps: ps})
-	if got, want := strings.Join(m.items(), " "), closedRow+"ta a1 "+closedRow+"tr"; got != want {
-		t.Fatalf("All lists %q; want the open team's line and member, and the recent closed team, collapsed", got)
+	if got, want := strings.Join(m.items(), " "), closedRow+"ta a1"; got != want {
+		t.Fatalf("All lists %q; want only the open team's line and member", got)
 	}
-	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
+	for m.tab != tabClosed {
+		m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	}
+	if got, want := strings.Join(m.items(), " "), closedRow+"tr "+closedRow+"to"; got != want {
+		t.Fatalf("Closed lists %q; want every closed team, newest first, one line each", got)
+	}
 	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got, want := strings.Join(m.items(), " "), closedRow+"ta a1 "+closedRow+"tr r1"; got != want {
-		t.Fatalf("after enter on the closed team All lists %q; want its member r1 too", got)
+	if got, want := strings.Join(m.items(), " "), closedRow+"tr r1 "+closedRow+"to"; got != want {
+		t.Fatalf("after enter on the closed team Closed lists %q; want its member r1 too", got)
 	}
 	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
 	if m.sel != "r1" {
 		t.Fatalf("selected %q; want r1, a member of the expanded closed team", m.sel)
 	}
-	for m.tab != tabClosed {
-		m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
-	}
-	if got, want := strings.Join(m.items(), " "), closedRow+"tr r1 "+closedRow+"to"; got != want {
-		t.Fatalf("Closed lists %q; want every closed team, newest first", got)
-	}
 }
 
-// An open team whose members are all gone is one line in All, collapsed until enter; its own
-// tab lists its members; when a member is back it is a normal team, no key needed.
+// An open team whose members are all gone is not in All, which lists what is alive; its project's
+// tab lists it with its members, after the projects with someone alive; when a member is back it
+// is a normal team in All again, its gone member folded.
 func TestTopDeadOpenTeamIsOneLine(t *testing.T) {
 	ps := func(d2 string) proto.PsResult {
 		return proto.PsResult{State: core.State{Teams: []core.TeamState{
-			{ID: "ta", Name: "a", Members: []core.MemberState{{ID: "a1", Name: "a1", State: "idle"}}},
-			{ID: "td", Name: "dead", Members: []core.MemberState{{ID: "d1", Name: "d1", State: "gone"}, {ID: "d2", Name: "d2", State: d2}}}}}}
+			{ID: "ta", Name: "a", Root: "/p/a", Members: []core.MemberState{{ID: "a1", Name: "a1", State: "idle"}}},
+			{ID: "td", Name: "dead", Root: "/p/d", Members: []core.MemberState{{ID: "d1", Name: "d1", State: "gone"}, {ID: "d2", Name: "d2", State: d2}}}}}}
 	}
 	m := newTopModel(nil, "")
 	m.Update(fetched{ps: ps("gone")})
-	if got, want := strings.Join(m.items(), " "), closedRow+"ta a1 "+closedRow+"td"; got != want {
-		t.Fatalf("All lists %q; want the live member and the dead team as one line", got)
+	if got, want := strings.Join(m.items(), " "), closedRow+"ta a1"; got != want {
+		t.Fatalf("All lists %q; want only the live team", got)
 	}
-	m.Update(tea.KeyPressMsg{Code: 'j', Text: "j"})
-	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	if got, want := strings.Join(m.items(), " "), closedRow+"ta a1 "+closedRow+"td d1 d2"; got != want {
-		t.Fatalf("after enter All lists %q; want the dead team's members too", got)
+	var keys []string
+	for _, tab := range m.tabs() {
+		keys = append(keys, tab.Key)
 	}
-	m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
-	for m.tab != "td" {
+	if want := ",/p/a,/p/d"; strings.Join(keys, ",") != want {
+		t.Fatalf("tabs %q; want All, the live project, then the all-gone one", keys)
+	}
+	for m.tab != "/p/d" {
 		m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
 	}
 	if got, want := strings.Join(m.items(), " "), "d1 d2"; got != want {
-		t.Fatalf("its own tab lists %q; want its members, no collapsed line", got)
+		t.Fatalf("its project's tab lists %q; want its members, no collapsed line", got)
 	}
 	m.tab = ""
 	m.Update(fetched{ps: ps("idle")})
@@ -659,4 +660,19 @@ func hitFor(m *topModel, id string) (hit, bool) {
 		}
 	}
 	return hit{}, false
+}
+
+// The tab bar always shows All and the selected tab; the others that do not fit are the "‹ +N" and
+// "+N ›" ends, and the shown ones slide one tab at a time as the selection moves along.
+func TestTabSpan(t *testing.T) {
+	w := []int{5, 8, 8, 8, 8, 8, 8} // All and six projects, each 8 cells with its gap of 3
+	lo, hi := 1, 0
+	var seen []string
+	for sel := 0; sel < len(w); sel++ {
+		lo, hi = tabSpan(w, sel, lo, 5+2*(3+8)+2*(3+5)) // All, two projects and both ends
+		seen = append(seen, fmt.Sprintf("%d:%d-%d", sel, lo, hi))
+	}
+	if got, want := strings.Join(seen, " "), "0:1-2 1:1-2 2:1-2 3:2-3 4:3-4 5:4-5 6:5-6"; got != want {
+		t.Fatalf("spans %q, want %q", got, want)
+	}
 }

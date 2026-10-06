@@ -9,7 +9,10 @@ import (
 // own team when the Human asks. The effect is admin team down, through TeamDown itself: headless
 // workers stopped, every session of the team (the gate included) out of it (its harness joins again
 // as a solo), nothing acked. Anyone else is denied with the gate's name.
-func (e *Engine) closeTeam(ctx context.Context, c Caller) (AgentResult, error) {
+func (e *Engine) closeTeam(ctx context.Context, c Caller, a AgentArgs) (AgentResult, error) {
+	if a.Team != "" { // a taskforce the caller called up
+		return e.closeTaskforce(ctx, c, a)
+	}
 	var p participant
 	var team string
 	err := e.inTx(ctx, func(t *txn) error {
@@ -19,6 +22,19 @@ func (e *Engine) closeTeam(ctx context.Context, c Caller) (AgentResult, error) {
 		}
 		if p.team == "" {
 			return errf(CodeInvalid, "you are solo: there is no team to close")
+		}
+		// Nobody inside a taskforce closes it, its chair included: its caller does, with team=.
+		parent, err := t.taskforceParent(p.team)
+		if err != nil {
+			return err
+		}
+		if parent != "" {
+			var caller string
+			if err := t.QueryRowContext(t.ctx, `SELECT name FROM participants WHERE id=?`, parent).Scan(&caller); err != nil {
+				return internal(err)
+			}
+			return deny(&p, "agent.close", "permission", "taskforce.close_by_caller",
+				"only "+caller+" closes this taskforce", map[string]any{"caller": caller}, map[string]any{"caller": caller})
 		}
 		var mode string
 		if err := t.QueryRowContext(t.ctx, `SELECT COALESCE(mode,'') FROM participants WHERE id=?`, p.id).Scan(&mode); err != nil {

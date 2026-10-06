@@ -78,24 +78,27 @@ func (e *Engine) found(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 			return err
 		}
 		if p.team == "" { // a solo moves in
-			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET team_id=?, role=? WHERE id=?`,
-				team.ID, role, p.id); err != nil {
+			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET team_id=?, role=?, joined_at=? WHERE id=?`,
+				team.ID, role, t.now, p.id); err != nil {
 				return internal(err)
 			}
 			res = AgentResult{ParticipantID: p.id, RunID: p.run, TeamID: team.ID, TeamName: name}
-			return nil
+			return t.gateIfNone(team.ID, p.id) // the founder is the gate
 		}
 		// A member: a new participant for the same session in the new team, then leave.
 		res = AgentResult{ParticipantID: newID(t.now), RunID: newID(t.now), Token: token, TeamID: team.ID, TeamName: name}
 		if _, err := t.ExecContext(t.ctx, `INSERT INTO participants
 			(id, run_id, kind, harness, mode, name, cwd, team_id, role, state, state_since, last_activity,
-			 token_hash, harness_ref, created_at)
-			SELECT ?, ?, kind, harness, mode, name, cwd, ?, ?, 'idle', ?, ?, ?, harness_ref, ?
+			 token_hash, harness_ref, created_at, person)
+			SELECT ?, ?, kind, harness, mode, name, cwd, ?, ?, 'idle', ?, ?, ?, harness_ref, ?, 1
 			FROM participants WHERE id=?`,
 			res.ParticipantID, res.RunID, team.ID, role, t.now, t.now, hashToken(token), t.now, p.id); err != nil {
 			return internal(err)
 		}
 		if err := t.moveSession(p.id, res.ParticipantID); err != nil {
+			return err
+		}
+		if err := t.gateIfNone(team.ID, res.ParticipantID); err != nil { // the founder is the gate
 			return err
 		}
 		wake, notice, err = t.leave(p, team.ID)
@@ -159,11 +162,13 @@ func WithTemplateList(f func(cwd string) ([]TemplateRef, error)) Option {
 }
 
 type TemplateInfo struct {
-	Name    string     `json:"name"`
-	From    string     `json:"from"` // its directory
-	Summary string     `json:"summary,omitempty"`
-	Roles   []RoleInfo `json:"roles,omitempty"`
-	Error   string     `json:"error,omitempty"` // the template could not be read
+	Name    string `json:"name"`
+	From    string `json:"from"` // its directory
+	Summary string `json:"summary,omitempty"`
+	// Taskforce: the template has a taskforce: block, so a solo or a gate may call it up with spawn template=.
+	Taskforce bool       `json:"taskforce,omitempty"`
+	Roles     []RoleInfo `json:"roles,omitempty"`
+	Error     string     `json:"error,omitempty"` // the template could not be read
 }
 
 type RoleInfo struct {
@@ -206,7 +211,12 @@ func (e *Engine) listTemplates(ctx context.Context, c Caller) (AgentResult, erro
 			continue
 		}
 		info.Summary = m.Summary
-		fmt.Fprintf(&b, "- %s (%s): %s\n", r.Name, r.From, orNone(m.Summary))
+		info.Taskforce = m.Taskforce != nil
+		tag := ""
+		if m.Taskforce != nil {
+			tag = " [taskforce: spawn template=" + r.Name + "]"
+		}
+		fmt.Fprintf(&b, "- %s (%s)%s: %s\n", r.Name, r.From, tag, orNone(m.Summary))
 		roles := make([]string, 0, len(m.Roles))
 		for name := range m.Roles {
 			roles = append(roles, name)

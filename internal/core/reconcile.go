@@ -13,6 +13,9 @@ import (
 // process or connection) is decided in its own transaction (state + `reconcile` event + notice),
 // with driver calls outside it. It never acks mail and never respawns.
 func (e *Engine) Reconcile(ctx context.Context) error {
+	if err := e.backfillGates(ctx); err != nil {
+		return err
+	}
 	type row struct {
 		id, run, mode, state, harness string
 	}
@@ -44,6 +47,76 @@ func (e *Engine) Reconcile(ctx context.Context) error {
 			d = decision{state: "gone", reason: "daemon_restart"}
 		}
 		if err := e.applyReconcile(ctx, r.id, r.run, r.mode == "headless", d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// backfillGates (and dropStaleRows) repair teams at start: it stores the gate of every team that has none yet (a DB from before schema v25, or a
+// team that had no member that could be one): nextGate, as when a gate leaves. It runs before the
+// states are decided below, and a team whose manifest cannot be read is skipped.
+func (e *Engine) backfillGates(ctx context.Context) error {
+	rows, err := e.db.QueryContext(ctx, `SELECT id FROM teams WHERE gate_id IS NULL`)
+	if err != nil {
+		return internal(err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return internal(err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return internal(err)
+	}
+	for _, id := range ids {
+		if err := e.inTx(ctx, func(t *txn) error {
+			g, ok, err := t.nextGate(id)
+			if err != nil || !ok {
+				return nil
+			}
+			return t.setGate(id, g.id)
+		}); err != nil {
+			return err
+		}
+	}
+	return e.dropStaleRows(ctx)
+}
+
+// dropStaleRows ends, in every open team, the member rows whose session went on as a newer row
+// (dropSuperseded): a DB from before the reopen did it leaves them. Their mail goes to the gate.
+func (e *Engine) dropStaleRows(ctx context.Context) error {
+	rows, err := e.db.QueryContext(ctx, `SELECT id FROM teams WHERE closed_at IS NULL`)
+	if err != nil {
+		return internal(err)
+	}
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return internal(err)
+		}
+		ids = append(ids, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return internal(err)
+	}
+	for _, id := range ids {
+		if err := e.inTx(ctx, func(t *txn) error {
+			n, err := t.dropSuperseded(id)
+			if err != nil || n == 0 {
+				return err
+			}
+			_, _, _, _, err = t.rerouteToGate(id)
+			return err
+		}); err != nil {
 			return err
 		}
 	}

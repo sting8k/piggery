@@ -22,6 +22,11 @@ type Unit struct {
 	Team   *core.TeamState  // an open team, or a closed one's state
 	Closed *core.ClosedTeam // set for a closed team
 	Solo   *core.SoloState
+	// Under is the participant the unit is listed under: a taskforce sits under its caller (the
+	// solo, or the team of the member that called it up), Depth steps in. "" for every other unit,
+	// and for a taskforce whose caller is not in the list (another tab, gone with its team).
+	Under string
+	Depth int
 }
 
 func (u Unit) created() int64 {
@@ -155,14 +160,35 @@ func GroupByDir(teams []core.TeamState, closed []core.ClosedTeam, solos []core.S
 		}
 		g.Units = append(g.Units, u)
 	}
+	// A taskforce is listed in its caller's directory, whatever its own root.
+	dirOf := map[string]string{} // a solo's or a member's id -> the directory of its unit
 	for i := range teams {
-		add(teams[i].Root, Unit{Team: &teams[i]})
+		for _, m := range teams[i].Members {
+			dirOf[m.ID] = teams[i].Root
+		}
 	}
 	for i := range closed {
-		add(closed[i].Root, Unit{Team: &closed[i].TeamState, Closed: &closed[i]})
+		for _, m := range closed[i].Members {
+			dirOf[m.ID] = closed[i].Root
+		}
 	}
 	for i := range solos {
-		add(deepestRoot(solos[i].Cwd, roots), Unit{Solo: &solos[i]})
+		dirOf[solos[i].ID] = deepestRoot(solos[i].Cwd, roots)
+	}
+	home := func(t core.TeamState) string {
+		if d, ok := dirOf[t.ParentID]; ok && t.ParentID != "" {
+			return d
+		}
+		return t.Root
+	}
+	for i := range teams {
+		add(home(teams[i]), Unit{Team: &teams[i]})
+	}
+	for i := range closed {
+		add(home(closed[i].TeamState), Unit{Team: &closed[i].TeamState, Closed: &closed[i]})
+	}
+	for i := range solos {
+		add(dirOf[solos[i].ID], Unit{Solo: &solos[i]})
 	}
 	for _, g := range order {
 		slices.SortStableFunc(g.Units, func(a, b Unit) int {
@@ -174,6 +200,7 @@ func GroupByDir(teams []core.TeamState, closed []core.ClosedTeam, solos []core.S
 			}
 			return cmp.Or(cmp.Compare(closed(a), closed(b)), cmp.Compare(a.created(), b.created()))
 		})
+		g.Units = nestTaskforces(g.Units)
 	}
 	rank := func(g *DirGroup) (bucket int, stamp int64) { // the best bucket of its units, the newest stamp in it
 		bucket = bucketClosed
@@ -196,6 +223,59 @@ func GroupByDir(teams []core.TeamState, closed []core.ClosedTeam, solos []core.S
 	for i, g := range order {
 		out[i] = *g
 		out[i].Bucket, _ = rank(g)
+	}
+	return out
+}
+
+// nestTaskforces puts each taskforce right after the unit of its caller (a solo, or the team the
+// calling member belongs to), after that unit's own taskforces, in the order of us, and sets Under
+// and Depth. A taskforce whose caller is not among us stays where it is.
+func nestTaskforces(us []Unit) []Unit {
+	ownerOf := map[string]int{} // a solo's or a member's id -> the index of its unit
+	for i, u := range us {
+		if u.Solo != nil {
+			ownerOf[u.Solo.ID] = i
+			continue
+		}
+		for _, m := range u.Team.Members {
+			ownerOf[m.ID] = i
+		}
+	}
+	parentOf := func(u Unit) string {
+		if u.Team != nil {
+			return u.Team.ParentID
+		}
+		return ""
+	}
+	kids := map[int][]int{}
+	var roots []int
+	for i, u := range us {
+		if o, ok := ownerOf[parentOf(u)]; ok && o != i && parentOf(u) != "" {
+			kids[o] = append(kids[o], i)
+		} else {
+			roots = append(roots, i)
+		}
+	}
+	out := make([]Unit, 0, len(us))
+	seen := map[int]bool{}
+	var walk func(i int, under string, depth int)
+	walk = func(i int, under string, depth int) {
+		if seen[i] { // a caller loop cannot be made; do not trust that here
+			return
+		}
+		seen[i] = true
+		u := us[i]
+		u.Under, u.Depth = under, depth
+		out = append(out, u)
+		for _, k := range kids[i] {
+			walk(k, parentOf(us[k]), depth+1)
+		}
+	}
+	for _, i := range roots {
+		walk(i, "", 0)
+	}
+	for i := range us { // units only reachable through a loop
+		walk(i, "", 0)
 	}
 	return out
 }

@@ -24,7 +24,7 @@ func (e *Engine) Agent(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 	case AgentTemplates:
 		return e.listTemplates(ctx, c)
 	case AgentClose:
-		return e.closeTeam(ctx, c)
+		return e.closeTeam(ctx, c, a)
 	case AgentReopen:
 		return e.reopen(ctx, c, a)
 	}
@@ -45,6 +45,9 @@ func (e *Engine) Agent(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 }
 
 func (e *Engine) spawn(ctx context.Context, c Caller, a AgentArgs) (AgentResult, error) {
+	if a.Template != "" { // spawn template=: a taskforce (taskforce.go); an older daemon has no role here and refuses
+		return e.spawnTaskforce(ctx, c, a)
+	}
 	name := strings.TrimSpace(a.Name)
 	if name == "" || isReserved(name) || a.Role == "" || a.Task == "" {
 		return AgentResult{}, errf(CodeInvalid, "spawn needs role, a valid name, and task")
@@ -160,13 +163,15 @@ func (e *Engine) spawn(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 func (e *Engine) resume(ctx context.Context, c Caller, a AgentArgs) (AgentResult, error) {
 	return e.resumeWorker(ctx, func(t *txn) (participant, participant, error) {
 		return t.ownedWorker(c, a.Target, "agent.resume")
-	}, a.Task)
+	}, a.Task, false)
 }
 
 // resumeWorker runs a stopped worker again in its session (gone, or parked once its old process
 // is shown dead). find returns who resumes (its team is the worker's; id "" = the admin) and the
-// worker. task, when set, is a message from who resumes, as at spawn.
-func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participant, participant, error), task string) (AgentResult, error) {
+// worker. task, when set, is a message from who resumes, as at spawn. byMail: the daemon resumes a
+// gone member because mail came for it (wake.go): the member goes on as a headless worker, and the
+// event says so.
+func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participant, participant, error), task string, byMail bool) (AgentResult, error) {
 	token, err := newToken()
 	if err != nil {
 		return AgentResult{}, internal(err)
@@ -224,9 +229,10 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 		if err := t.gateConcurrency(p, m, "agent.resume", w.id); err != nil { // a parked w already counts
 			return err
 		}
-		var cwd, ref, model, thinking, spawnedBy string
+		var cwd, ref, model, thinking, spawnedBy, mode, sessionRef string
 		if err := t.QueryRowContext(t.ctx, `SELECT cwd, COALESCE(harness_ref,''), COALESCE(model,''), COALESCE(thinking,''),
-			COALESCE(spawned_by,'') FROM participants WHERE id=?`, w.id).Scan(&cwd, &ref, &model, &thinking, &spawnedBy); err != nil {
+			COALESCE(spawned_by,''), COALESCE(mode,''), COALESCE(session_ref,'') FROM participants WHERE id=?`, w.id).Scan(
+			&cwd, &ref, &model, &thinking, &spawnedBy, &mode, &sessionRef); err != nil {
 			return internal(err)
 		}
 		if fi, err := os.Stat(cwd); err != nil || !fi.IsDir() { // never another directory in its place
@@ -248,10 +254,18 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 			harness, e.driverCaps(harness), w.id); err != nil {
 			return internal(err)
 		}
+		if byMail {
+			if ref, err = t.becomeWorker(w.id, mode, ref, sessionRef); err != nil {
+				return err
+			}
+		}
 		w.run = run
 		res = AgentResult{ParticipantID: w.id, RunID: run}
 		payload := map[string]any{"worker": w.id, "run_id": run}
-		if p.id == "" {
+		switch {
+		case byMail:
+			payload["by"] = "mail"
+		case p.id == "":
 			payload["by"] = "admin"
 		}
 		if task != "" {
@@ -630,18 +644,25 @@ func (t *txn) gateConcurrency(p participant, m manifest, verb, except string) er
 	return nil
 }
 
-// depth is the length of id's spawned_by chain (a joined participant is 0).
+// depth is the length of id's spawned_by chain (a joined participant is 0). A taskforce's chair
+// (spawned by the caller of its team, outside it) counts as depth 1 inside its own team: the
+// taskforce's limits.depth is its own.
 func (t *txn) depth(id string) (int, error) {
 	d := 0
 	for seen := map[string]bool{}; !seen[id]; d++ {
 		seen[id] = true
 		var parent sql.NullString
-		err := t.QueryRowContext(t.ctx, `SELECT spawned_by FROM participants WHERE id=?`, id).Scan(&parent)
+		var chair bool
+		err := t.QueryRowContext(t.ctx, `SELECT p.spawned_by, COALESCE(p.spawned_by = (SELECT parent_id FROM teams WHERE id=p.team_id), 0)
+			FROM participants p WHERE p.id=?`, id).Scan(&parent, &chair)
 		if errors.Is(err, sql.ErrNoRows) || (err == nil && !parent.Valid) {
 			return d, nil
 		}
 		if err != nil {
 			return 0, internal(err)
+		}
+		if chair {
+			return d + 1, nil
 		}
 		id = parent.String
 	}

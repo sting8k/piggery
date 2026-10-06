@@ -34,8 +34,13 @@ type State struct {
 
 // TeamState is one open team. Held and Unacked count mail to its members (by recipient).
 type TeamState struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Template string `json:"template"` // the template it was founded from
+	// Parent and ParentID: the participant (name, id) that called this team up as a taskforce
+	// (spawn template=); "" for an ordinary team.
+	Parent    string        `json:"parent,omitempty"`
+	ParentID  string        `json:"parent_id,omitempty"`
 	Root      string        `json:"root"`
 	Gate      string        `json:"gate"` // gate's name, "" when the team has none
 	Held      int           `json:"held"`
@@ -184,13 +189,14 @@ func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
 			return internal(err)
 		}
 
-		teams, err := t.QueryContext(t.ctx, `SELECT id, name, root_cwd, created_at FROM teams WHERE closed_at IS NULL ORDER BY name`)
+		teams, err := t.QueryContext(t.ctx, `SELECT id, name, template_name, root_cwd, created_at, COALESCE(parent_id,''),
+			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),'') FROM teams WHERE closed_at IS NULL ORDER BY name`)
 		if err != nil {
 			return internal(err)
 		}
 		for teams.Next() {
 			var ts TeamState
-			if err := teams.Scan(&ts.ID, &ts.Name, &ts.Root, &ts.CreatedAt); err != nil {
+			if err := teams.Scan(&ts.ID, &ts.Name, &ts.Template, &ts.Root, &ts.CreatedAt, &ts.ParentID, &ts.Parent); err != nil {
 				teams.Close()
 				return internal(err)
 			}
@@ -206,14 +212,15 @@ func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
 			}
 		}
 		// Closed teams gc has not removed yet, newest first, with who closed them.
-		closed, err := t.QueryContext(t.ctx, `SELECT id, name, root_cwd, closed_at, created_at FROM teams
+		closed, err := t.QueryContext(t.ctx, `SELECT id, name, template_name, root_cwd, closed_at, created_at, COALESCE(parent_id,''),
+			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),'') FROM teams
 			WHERE closed_at IS NOT NULL ORDER BY closed_at DESC`)
 		if err != nil {
 			return internal(err)
 		}
 		for closed.Next() {
 			var c ClosedTeam
-			if err := closed.Scan(&c.ID, &c.Name, &c.Root, &c.ClosedAt, &c.CreatedAt); err != nil {
+			if err := closed.Scan(&c.ID, &c.Name, &c.Template, &c.Root, &c.ClosedAt, &c.CreatedAt, &c.ParentID, &c.Parent); err != nil {
 				closed.Close()
 				return internal(err)
 			}
@@ -319,7 +326,7 @@ func (t *txn) teamMembers(ts *TeamState, pending map[string][2]int) error {
 	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+`, COALESCE(mode,''), last_turn_end, left_at,
 		COALESCE(session_model, model, ''), COALESCE(session_thinking, thinking, ''), COALESCE(capabilities, 'null'),
 		created_at, COALESCE(spawned_by, ''), cwd, protocol_version, transcript, transcript_format
-		FROM participants WHERE team_id=? ORDER BY created_at, rowid`, ts.ID)
+		FROM participants WHERE team_id=? ORDER BY `+joinOrder, ts.ID)
 	if err != nil {
 		return internal(err)
 	}

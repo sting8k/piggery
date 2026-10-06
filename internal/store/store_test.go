@@ -31,7 +31,7 @@ func TestOpenMigratesV1File(t *testing.T) {
 	}
 	defer db.Close()
 	var version, team string
-	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "22" {
+	if err := db.QueryRow(`SELECT value FROM meta WHERE key='schema_version'`).Scan(&version); err != nil || version != "27" {
 		t.Fatalf("version = %q, %v", version, err)
 	}
 	if err := db.QueryRow(`SELECT name FROM teams WHERE id='T1'`).Scan(&team); err != nil || team != "p2p" {
@@ -166,10 +166,10 @@ func TestOpenBacksUpBeforeMigrating(t *testing.T) {
 		}
 		db.Close()
 	}
-	if got, want := names(), "mine.db pre-v18-22 pre-v19-22 pre-v20-22 pre-v3-4-by-hand.db"; got != want {
+	if got, want := names(), "mine.db pre-v18-27 pre-v19-27 pre-v20-27 pre-v3-4-by-hand.db"; got != want {
 		t.Fatalf("backups = %q; want the 3 newest upgrades, and both other files kept", got)
 	}
-	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-22-*.db"))
+	es, _ := filepath.Glob(filepath.Join(backups, "pre-v20-27-*.db"))
 	cp, err := sql.Open("sqlite", "file:"+es[0])
 	if err != nil {
 		t.Fatal(err)

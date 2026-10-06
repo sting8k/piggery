@@ -1,0 +1,63 @@
+# dual-lens: a taskforce that gets one hard technical question or one review, sends the same neutral
+# brief to two lenses on different models, takes where they agree, makes them answer each other's
+# conflicts, decides, and sends the answer back to whoever asked. Call it up with `spawn template=`
+# from a session; a person can also found it as a long-lived team. Read only unless the task says
+# otherwise. Every role talks with `send`; routing is the fence: a lens reaches only the lead, so
+# the lenses never see each other. Two lens roles so each can run its own model: set
+# roles.lens-a.spawn.model and roles.lens-b.spawn.model to two different model families (see the
+# README).
+template: dual-lens
+summary: "Read-only: a chair asks two lenses on different models one hard question or review, takes their overlap, makes them answer each other's conflicts, decides, and sends the answer."
+auto_join_role: lead   # the chair: the founder's role when a session founds this template, the worker a taskforce starts
+taskforce:             # a solo or a gate calls this up for one job (spawn template=), as a headless team
+  idle_for: 20m          # when every member has been idle this long, the caller gets one notice
+roles:
+  lead:
+    description: "The chair: briefs both lenses alike, sorts overlap from conflict, relays the conflicts, decides, and sends the answer to whoever asked."
+    instructions_file: prompts/dual-lens/lead.md
+    tools: [send, inbox, who, agent]
+    can_spawn: [lens-a, lens-b]
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  lens-a:
+    description: "Answers one question or review from the evidence, reads only; then weighs the arguments the lead relays."
+    instructions_file: prompts/dual-lens/lens.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+  lens-b:
+    description: "Answers one question or review from the evidence, reads only; then weighs the arguments the lead relays."
+    instructions_file: prompts/dual-lens/lens.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+routing:
+  - {from: lead, to: lens-a, allow: true, cc: []}
+  - {from: lens-a, to: lead, allow: true, cc: []}
+  - {from: lead, to: lens-b, allow: true, cc: []}
+  - {from: lens-b, to: lead, allow: true, cc: []}
+timers:
+  - {on: lens-a, notify: reports_to, silent_for: 20m}
+  - {on: lens-b, notify: reports_to, silent_for: 20m}
+limits:                  # none: no limit
+  depth: 2                 # how deep spawned_by chains may go
+  concurrency: 10           # live workers at once
+  messages_per_participant_per_minute: 30
+  max_respawn_per_hour: none

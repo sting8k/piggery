@@ -24,6 +24,13 @@ func yamlKeys(t reflect.Type) []string {
 	return keys
 }
 
+// teamKeys are the parser's team keys that every template writes. taskforce is the author's to add:
+// a filled block would make every template callable as a taskforce.
+func teamKeys() []string {
+	keys := slices.DeleteFunc(yamlKeys(reflect.TypeOf(manifest{})), func(k string) bool { return k == "taskforce" })
+	return append(keys, "timers") // timers: parseTimers
+}
+
 // Every built-in template writes every field a manifest takes, defaults too: the keys come from the
 // manifest's own types and knownLimits, so a field added without its template line fails here. And
 // every role of a built-in has send.
@@ -32,7 +39,7 @@ func TestBuiltinTemplatesWriteEveryField(t *testing.T) {
 	if len(files) == 0 {
 		t.Fatal("no built-in templates found")
 	}
-	team := append(yamlKeys(reflect.TypeOf(manifest{})), "timers") // timers: parseTimers
+	team := teamKeys()
 	role := yamlKeys(reflect.TypeOf(roleSpec{}))
 	spawn := yamlKeys(reflect.TypeOf(roleSpec{}.Spawn))
 	route := yamlKeys(reflect.TypeOf(routeRule{}))
@@ -128,7 +135,7 @@ func TestManifestKeysMatchTheParser(t *testing.T) {
 		where     string
 		got, want []string
 	}{
-		{"team", names(manifestKeys), sorted(append(yamlKeys(reflect.TypeOf(manifest{})), "timers"))},
+		{"team", names(manifestKeys), sorted(teamKeys())},
 		{"role", names(field(manifestKeys, "roles").Each), sorted(role)},
 		{"spawn", names(field(field(manifestKeys, "roles").Each, "spawn").Fields), sorted(yamlKeys(reflect.TypeOf(roleSpec{}.Spawn)))},
 		{"routing", names(field(manifestKeys, "routing").Items), sorted(yamlKeys(reflect.TypeOf(routeRule{})))},

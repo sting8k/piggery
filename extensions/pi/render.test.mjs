@@ -14,6 +14,13 @@ test("a mail header shows #N and names, the local send time, and an age only whe
 	assert.doesNotMatch(a + b, /01[A-Z]…/);
 });
 
+test("a redelivered mail says so, whatever its age", () => {
+	const now = Date.now();
+	const m = { id: "01M…", seq: 7, from_name: "a1", from_label: "a1 (peer)", body: "x", created_at: now - 1_000 };
+	assert.match(render([{ ...m, redelivered: true }], undefined, now), / redelivered="true">/);
+	assert.doesNotMatch(render([m], undefined, now), /redelivered/);
+});
+
 test("who: own team in full, one line per other team and per solo, admittable marked", () => {
 	const out = renderWho(
 		[

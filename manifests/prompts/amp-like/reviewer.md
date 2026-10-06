@@ -21,4 +21,4 @@ low: style), what is wrong, why it matters, and the fix. Mark what you saw run a
 infer.
 
 Send the review once: `{tool:send}` to the lead, kind `review`, `reply_to` the brief. Then end your
-turn; the lead stops you. Do not start other agents; you can write only to the lead.
+turn; the lead stops you. You can write only to the lead.

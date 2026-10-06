@@ -185,7 +185,7 @@ func (t *txn) sharedPrompt(template, role string) string {
 // roleCard is the plain-text card put in every run's system prompt. It never contains tokens.
 func (t *txn) roleCard(p participant, m manifest) (string, error) {
 	if p.team == "" {
-		return soloCard(p) + t.sharedPrompt("", "solo"), nil
+		return soloCard(p, t.taskforceLinesOf(p)) + t.sharedPrompt("", "solo"), nil
 	}
 	var team string
 	if err := t.QueryRowContext(t.ctx, `SELECT name FROM teams WHERE id=?`, p.team).Scan(&team); err != nil {
@@ -197,7 +197,7 @@ func (t *txn) roleCard(p participant, m manifest) (string, error) {
 		b.WriteString("\n" + WithToolNames(ins, p.toolPrefix) + "\n")
 	}
 	b.WriteString(t.sharedPrompt(m.Template, p.role))
-	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+` FROM participants WHERE team_id=? AND id<>? ORDER BY created_at, rowid`,
+	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+` FROM participants WHERE team_id=? AND id<>? ORDER BY `+joinOrder,
 		p.team, p.id)
 	if err != nil {
 		return "", internal(err)
@@ -221,6 +221,11 @@ func (t *txn) roleCard(p participant, m manifest) (string, error) {
 	}
 	b.WriteString("\nMail from others arrives as a user message with a header naming the sender and the message's #N.")
 	b.WriteString(toolTips(p.toolPrefix, m.Roles[p.role].Tools))
+	extra, err := t.taskforceCard(p, m)
+	if err != nil {
+		return "", err
+	}
+	b.WriteString(extra)
 	b.WriteString("\n")
 	return b.String(), nil
 }

@@ -1,5 +1,136 @@
 # Changelog
 
+## v0.9.0 - 2026-10-06
+
+A session can call up a taskforce for one job, a team's gate stays with its founder, and `lead-peer`, `dual-lens` and `advisor` join the built-in templates.
+
+Before you upgrade:
+
+- **`supervisor-executor` is no longer built in: `lead-peer` replaces it** (roles `lead` and
+  `peer`). A copy in `~/.piggery/templates` stays as your own template and teams made from it keep
+  running, but it gets no updates, and `prompts` entries in `config.yaml` that name its roles apply
+  to it only; add entries for `lead-peer/...` to give those rules to the new template. `slp`
+  changed too: its Supervisor no longer writes to a Peer directly or pins to the board. An `slp` you
+  never edited is refreshed when the daemon restarts; a running team keeps the template it started
+  with.
+- **A team's gate no longer passes to a peer while its founder is away.** The gate is the member
+  that founded the team (or reopened it), stored on the team: closing its session, a crash or a
+  daemon restart leave it the gate. Mail for it waits in its inbox until it is back, a send to the
+  team from another team is queued instead of refused, and no peer can close the team or take its
+  cross-team mail meanwhile. The gate moves only when it leaves the team (the next member that
+  joined takes over, `gate_moved` in `piggery log`) or the team is reopened. A worker is never
+  the gate. Existing teams get one when the daemon starts: the member that joined first, a session
+  before a worker.
+- **Mail now wakes a member that is gone.** In an open team, new mail for a member whose session
+  you closed starts that session again as a headless worker, which costs a model run; `ps` shows it
+  as a worker. The limits of `piggery resume` apply (`max_respawn_per_hour`, `concurrency`,
+  directories), the gate is never woken, and a worker that stops with the mail unread is woken
+  again only by newer mail. If you open the session yourself, the worker is stopped (about 2.5
+  seconds at most, a turn in progress can be cut) and the session is yours again. Before, such mail
+  waited for `piggery resume`.
+- **The database moves from schema 22 to 27** at the first start. piggery copies it to
+  `~/.piggery/backups/pre-v22-27-<date>.db` first (the three newest copies are kept). v0.8.0 does
+  not open a newer database: to go back, stop the daemon, install v0.8.0 and put that copy in
+  place of `piggery.db`, deleting `piggery.db-wal` and `piggery.db-shm` beside it. Whatever happened
+  after the upgrade is lost.
+- **Open sessions keep the old extension until you restart them.** The daemon updates the pi, omp,
+  dsh and opencode extensions at its first start (versions below), so `piggery setup` is not needed
+  for them. Claude Code, Codex and Paseo installs did not change.
+
+In this release:
+
+- Integration versions since v0.8.0: pi 3 to 8, omp 3 to 8, dsh 4 to 9, opencode 1 to 6 (claude 1,
+  codex 1 and paseo 3 are the same).
+- A solo session or a team's gate can call up a taskforce: `spawn` with a `template` and a task
+  builds a temporary team from a template that has a `taskforce:` block, in the caller's directory
+  (named after the template unless you give a name), and starts its chair as a headless worker. The
+  chair sends the result back as mail and stays for follow-ups; only the caller closes the
+  taskforce, from outside (a close from inside it, the chair's included, is refused). If every
+  member stays idle for `taskforce.idle_for` (20 minutes in the built-ins) you get one notice for
+  that idle stretch. A taskforce closes with its caller, and also when its chair stops (gone, left or
+  parked): its other members are stopped as with `team down` and the caller gets one notice, "Taskforce X
+  closed: its chair <name> stopped." A closed taskforce is
+  never reopened (call its template up again), and a taskforce never calls another. Its caller's
+  `limits.concurrency` counts the taskforces it has open; the taskforce's own `limits.depth` counts
+  from its chair. `spawn template=` also takes a `cwd`, the
+  taskforce's directory (and its chair's): relative to the caller's or absolute, and inside the
+  caller's root (a gate's team root, a solo's own directory), a git worktree of that repo, or a
+  `spawn.allowed_roots` entry, else it is refused; no `can_set_cwd` is needed, and without it the
+  taskforce works in the caller's directory. In a shell:
+  `piggery agent spawn --template T [--name N] [--cwd D] <task>` and `piggery agent close [<team>]`. A key
+  piggery does not know inside a `taskforce:` block is ignored, and `piggery check` names it.
+- `council`, `dual-lens` and `advisor` are taskforce templates. The prompts of `council` and
+  `dual-lens` work both ways: founded by you as a long-lived team, or called up by a session (they
+  answer the caller, and only read unless the task says they may edit). The leads of `lead-peer`
+  and `slp` call a taskforce for a one-off second opinion instead of spawning a Peer. The card of a
+  solo and of a gate lists the taskforces it can call and says when to call one: a second opinion, a
+  review that matters, a decision or approach it is stuck on, or a short bounded job, not work it can
+  do itself; each taskforce's summary says what it does and whether it edits.
+- The `agent` tool of pi, omp, dsh, opencode, Claude Code and Codex takes `template` on `spawn` and
+  `team` on `close`.
+- `piggery template list` has a `taskforce` column that marks the templates a session can call up.
+  `ps` and `top` list a taskforce right under its caller, a step in, with a `taskforce` label in
+  place of `team` and the caller's name (`caller=` in `ps`, `for <name>` in `top`); `ps --json` has
+  `parent` and `parent_id` on such a team and `under` on its unit in `projects`, and `ps --view` has `under` and `depth` on its block and
+  `taskforce` and `caller` on its head. A closed taskforce is not in the main list or under its caller
+  any more; it stays in the Closed tab until gc.
+- `top`'s tabs are projects (directories), not teams: All, then one tab per project, then Closed.
+  Projects with someone alive come before all-gone ones. A tab is named by its directory's last
+  name, with parent names added until two that clash differ (`a/api`, `b/api`), and a bar too wide
+  for the window slides, with `‹ +N` and `+N ›` for the tabs left out. A taskforce has no tab of its
+  own; it sits under its caller. All lists only what is alive: no team whose members are all gone, no
+  gone solo and no closed team (the one-hour grace for a closed team is gone; closed teams are in
+  Closed). A team with some members alive keeps its folded `N members ✗ gone` row. `ps`, `ps --json`
+  and `ps --view` are unchanged.
+- The built-in `lead-peer` template: the Lead owns the plan, talks to you directly, and judges each
+  result. A Peer may know as much as the Lead: it follows the brief by default and speaks up only
+  with evidence that the plan is off, and the Lead weighs that evidence, not who said it. Both
+  prompts are much shorter.
+- The `slp` prompts are much shorter, with the same Lead and Peer rules. The Supervisor writes to
+  a Lead as you would, passing on your own words where they carry the request; it talks only to
+  Leads and watches a lane through its Lead's log. In both templates a Lead writes to its Peers as
+  a person would, and a Peer's prompt speaks only of its work and the one who gives it.
+- New template `dual-lens`, written as a taskforce: its chair takes one hard technical question or
+  review, sends the same neutral brief to two lenses, accepts where they overlap, hands each lens
+  the other's argument where they conflict, decides, and sends the answer to whoever asked. It only
+  reads unless the task says it may edit. Set `lens-a` and `lens-b` to two different model
+  families; left at `inherit`, both run the same model.
+- New template `advisor`, a taskforce of one: it gives read-only advice on one hard decision or a
+  stalled approach (a recommendation, the evidence, the strongest downside, and a check that would
+  prove it wrong), answers by mail, and stays for follow-ups until you close it. Call it with
+  `spawn template=advisor`.
+- piggery now ships a shared prompt, `~/.piggery/rules/general-policy.md` (own the outcome,
+  question a mechanism before patching it, keep tests and docs minimal), for every role of
+  `lead-peer` and `slp`. `setup` or the daemon's start writes the
+  file and adds its entry to `prompts` in `config.yaml` once, keeping your entries. Remove the
+  entry or the file and it stays removed; a file you edited is never overwritten.
+- `top` and `ps` show the template a team was founded from in brackets after its name
+  (`piggery [lead-peer]`; not when it is the team's name); `ps --json` has it as `teams[].template`.
+  Members are listed in the order they joined the team (`ps`, `who`, `gc`).
+- A mail an agent is given again, because it was not acked, says `redelivered="true"` in its
+  header, whatever its age.
+- When a team closes (`team down`, or the gate closes it), a session that was a member goes on as a
+  solo under the name it had, not a new random one. Only if a live solo or an open team already
+  has that name does it become `name-2`.
+- `piggery template list` lists the templates a team can be founded from, with their summaries.
+  `team up` is no longer in `--help` or the public docs (it makes a team nobody can join): found a
+  team from a session. It still runs, names its team after the directory, and an unknown template
+  name says which ones exist.
+- `piggery --help` fits an 80-column window, one line a row (the full usage of each command is in
+  its own `--help`). `doctor` prints findings before warnings and "no findings" only when there are
+  neither, `log` leaves out empty `participant=`, `run=` and `ref=`, `top` and `ps` do not repeat a
+  template that is the team's name, and an empty team in `top` says it can be closed. The install
+  script's last line points to `piggery setup` for the full list of harnesses.
+- `setup` and `doctor` warn about a harness version only when it is older than the oldest tested
+  one; a newer version no longer shows "not tested".
+- Fix: the gate was the member created first, so a solo opened before the founder and admitted
+  later could become the gate. It is now the member that joined first.
+- Fix: when a team reopened, a member whose session had gone on as a newer row (it joined again
+  after the team closed) stayed as a second row that mail could wake or `admit` twice. It leaves
+  the team now, and `admit` refuses a session that already has a row in it.
+- Fix: a first install that ran only `piggery setup pi` had no worker profile, and the first worker
+  spawn failed. The daemon writes every missing worker profile when it starts.
+
 ## v0.8.0 - 2026-10-05
 
 opencode joins the farm, and two new team templates come built in: `amp-like` and `gastown-like`.

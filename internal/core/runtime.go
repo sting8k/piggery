@@ -240,15 +240,16 @@ type AgentArgs struct {
 	Name   string `json:"name,omitempty"`
 	Task   string `json:"task,omitempty"` // spawn, resume: becomes a message from the caller to the worker
 	// Cwd is spawn's directory for the worker, relative to the spawner's cwd or absolute; ""
-	// inherits the spawner's. Another than the spawner's needs can_set_cwd and the bounds.
+	// inherits the spawner's. Another than the spawner's needs can_set_cwd and the bounds. With Template it
+	// is the taskforce's directory: the bounds only (a solo or a gate has no can_set_cwd).
 	Cwd string `json:"cwd,omitempty"`
 	// No model: agents do not choose a worker's model; a "model" in the args is ignored like any
 	// unknown field.
 	Target string `json:"target,omitempty"` // worker name or id in view
 	Lines  int    `json:"lines,omitempty"`
-	// Template is found's team template (default p2p).
+	// Template is found's team template (default p2p), or spawn's: the taskforce template to call up (instead of Role).
 	Template string `json:"template,omitempty"`
-	// Team is reopen's closed team (its name).
+	// Team is reopen's closed team (its name), or close's: a taskforce this participant called up.
 	Team string `json:"team,omitempty"`
 }
 

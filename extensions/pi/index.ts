@@ -425,9 +425,9 @@ export default function piggery(pi: ExtensionAPI) {
 			return text(`founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`);
 		}
 		if (p.action === "templates") return text((await client!.call("agent", { action: "templates" }) as any).text);
-		if (!inTeam) throw new Error("you are a solo session: only actions templates, found and reopen (when the user asks for a team)");
+		if (!inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team)) throw new Error("you are a solo session: only actions templates, found, reopen, and spawn with template or close with team for a taskforce");
 		const r: any = await client!.call("agent", p);
-		if (p.action === "close") {
+		if (p.action === "close" && !p.team) {
 			// The team is closed and this participant left it (no retire push to the caller).
 			becomeSolo(false);
 			const failed = r.failed?.length ? `; could not stop: ${r.failed.join(", ")}` : "";
@@ -437,10 +437,11 @@ export default function piggery(pi: ExtensionAPI) {
 					`${failed}. You are solo now; your tools: ${TOOLS.map((t) => PREFIX + t).join(", ")}`,
 			);
 		}
+		if (p.action === "close") return text(`closed taskforce ${r.team_name}` + (r.stopped?.length ? `; stopped ${r.stopped.join(", ")}` : ""));
 		if (p.action === "tail") return text((r.records ?? []).map((x: unknown) => JSON.stringify(x)).join("\n") || "(no output)");
 		if (r.exit) return text(`stopped (exit ${JSON.stringify(r.exit)})`);
 		// Names and #N only, no ids.
-		if (p.action === "spawn") return text(`spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`);
+		if (p.action === "spawn") return text(p.template ? `called up taskforce ${r.team_name}; its task is #${r.task_seq}; write to it as ${r.team_name}, its result comes to you as mail` : `spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "resume" && r.task_seq) return text(`resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "admit") return text(`admitted ${p.target} as ${p.role}`);
 		return text(`${p.action} ok: ${p.target}`);

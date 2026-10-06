@@ -70,7 +70,7 @@ func (e *Engine) admit(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 			return err
 		}
 		if _, err := t.ExecContext(t.ctx, `UPDATE participants SET team_id=?, role=?, name=?, reports_to=?,
-			spawned_by=? WHERE id=?`, p.team, a.Role, name, p.id, p.id, s.id); err != nil {
+			spawned_by=?, joined_at=? WHERE id=?`, p.team, a.Role, name, p.id, p.id, t.now, s.id); err != nil {
 			return internal(err)
 		}
 		res = AgentResult{ParticipantID: s.id, RunID: s.run, TeamID: p.team}

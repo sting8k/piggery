@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	_ "embed"
 	"encoding/json"
@@ -86,7 +87,7 @@ func (e *env) printError(w io.Writer, st fang.Styles, err error) {
 	if errors.Is(err, errUsage) && e.cur != nil {
 		// A handler's "usage: <its usage line>" says no more than the usage printed below.
 		msg = strings.TrimPrefix(msg, errUsage.Error()+": ")
-		if strings.Contains(e.cur.UseLine(), msg) {
+		if strings.Contains(fullUseLine(e.cur), msg) {
 			msg = "missing or wrong arguments"
 		}
 	}
@@ -95,12 +96,15 @@ func (e *env) printError(w io.Writer, st fang.Styles, err error) {
 	fmt.Fprintln(w)
 	if errors.Is(err, errUsage) && e.cur != nil {
 		fmt.Fprintln(w, usageOf(e.cur))
+		if e.cur.CommandPath() == "piggery team up" {
+			fmt.Fprintf(w, "\ntemplates: %s (piggery template list)\n", e.templateNames())
+		}
 	}
 }
 
 // usageOf is a command's usage line and examples.
 func usageOf(c *cobra.Command) string {
-	s := "usage: " + c.UseLine()
+	s := "usage: " + fullUseLine(c)
 	if c.Example != "" {
 		s += "\n\nexamples:\n" + c.Example
 	}
@@ -124,7 +128,7 @@ func (e *env) root() *cobra.Command {
 	// Declared for help and so cobra can find the command after them; each handler parses them.
 	root.PersistentFlags().BoolP("admin", "a", false, "run as admin (admin.token)")
 	root.PersistentFlags().Bool("json", false, "print the raw JSON result")
-	root.PersistentFlags().Bool("no-start", false, "fail if the daemon is not running instead of starting it")
+	root.PersistentFlags().Bool("no-start", false, "do not start the daemon; fail if it is down")
 	root.AddGroup(
 		&cobra.Group{ID: grpStart, Title: "Get started"},
 		&cobra.Group{ID: grpTeams, Title: "Teams and templates"},
@@ -134,16 +138,22 @@ func (e *env) root() *cobra.Command {
 	)
 
 	root.SetHelpCommandGroupID(grpStart)
-	team := &cobra.Command{Use: "team", Short: "Bring a team up or down", GroupID: grpTeams}
+	team := &cobra.Command{Use: "team", Short: "Close a team", GroupID: grpTeams}
+	// team up still works (the private flow and the tests use it) but is not the user's way: a team
+	// made from a shell has no member, and a session joins only by founding or by being admitted.
+	up := e.cmd("up <template|path.yaml> [--cwd D] [--name N]", "Start a team from a template in ~/.piggery/templates", "",
+		"piggery team up lead-peer --cwd .\npiggery team up ./team.yaml --cwd . --name demo", authAdmin, e.teamUp)
+	up.Hidden = true
 	team.AddCommand(
-		e.cmd("up <template|path.yaml> [--cwd D] [--name N]", "Start a team from a template in ~/.piggery/templates", "",
-			"piggery team up supervisor-executor --cwd .\npiggery team up ./team.yaml --cwd . --name demo", authAdmin, e.teamUp),
+		up,
 		e.cmd("down <team>", "Close a team: stop its workers; nothing is acked", "",
 			"piggery team down demo", authAdmin, e.teamDown),
 	)
 	template := &cobra.Command{Use: "template", Short: "Make your own team template", GroupID: grpTeams}
+	template.AddCommand(e.cmd("list", "The templates a team can be founded from, with their summaries", "",
+		"piggery template list", authLocal, e.templateList))
 	template.AddCommand(e.cmd("new <name> [--from <built-in>]", "Copy a built-in (default p2p) to ~/.piggery/templates/<name>", "",
-		"piggery template new review --from supervisor-executor", authLocal,
+		"piggery template new review --from lead-peer", authLocal,
 		func(args []string) error { return e.template(append([]string{"new"}, args...)) }))
 	archive := &cobra.Command{Use: "archive", Short: "Read a gc archive", GroupID: grpMaintain}
 	archive.AddCommand(e.cmd("show <file> [--table T]", "Print a gc archive (local, no daemon)", "",
@@ -212,7 +222,57 @@ func (e *env) root() *cobra.Command {
 		e.cmd("mcp", "", "", "", authLocal, e.mcp),
 		e.cmd("hook claude <HookEvent>", "", "", "", authLocal, e.hook),
 	)
+	shortRootForms(root)
 	return root
+}
+
+// rootForm is how a command shows in `piggery --help`: one short line each, so a row fits 80
+// columns (fang pads every row to the longest usage and does not wrap). The command's own
+// --help and its usage errors keep the full form and the full description.
+type rootForm struct{ use, short string }
+
+var rootForms = map[string]rootForm{
+	"setup":    {"setup [<harness>]", "Set up piggery for a harness; alone: status"},
+	"template": {"template [command]", "List and copy team templates"},
+	"log":      {"log [--team T]", "Decisions and lifecycle events"},
+	"ps":       {"ps", "Daemon, teams, members and mail, once"},
+	"top":      {"top", "Live ps, with events and a worker's tail"},
+	"tail":     {"tail <worker> [-f]", "A worker's rpc log, readable"},
+	"abort":    {"abort <x>", "Cancel x's current turn; it stays alive"},
+	"kill":     {"kill <worker>", "Kill a headless worker now (alias: x)"},
+	"model":    {"model <worker> [model]", "Switch a worker's model or thinking"},
+	"resume":   {"resume <worker>", "Start a stopped worker again"},
+	"why":      {"why <from> <to>", "Every gate check for a send, nothing sent"},
+	"check":    {"check", "Check config, profiles, templates, prompts"},
+	"doctor":   {"doctor", "Findings about the daemon's state"},
+	"gc":       {"gc --closed-before D", "Archive, verify and delete closed teams"},
+	"restart":  {"restart", "Stop the daemon, then start it again"},
+	"shutdown": {"shutdown", "Stop the daemon and its workers"},
+	"update":   {"update [--check]", "Install the latest release"},
+}
+
+// shortRootForms gives each listed root command its short form and keeps what that drops: the
+// full usage in Annotations (usage errors print it) and in the command's own help, over the
+// full description.
+func shortRootForms(root *cobra.Command) {
+	for _, c := range root.Commands() {
+		f, ok := rootForms[c.Name()]
+		if !ok {
+			continue
+		}
+		full, long := c.Use, cmp.Or(c.Long, c.Short)
+		c.Annotations = map[string]string{"usage": full}
+		c.Long = long + "\n\nusage: piggery " + full
+		c.Use, c.Short = f.use, f.short
+	}
+}
+
+// fullUseLine is a command's usage line with its full form (see shortRootForms).
+func fullUseLine(c *cobra.Command) string {
+	if full := c.Annotations["usage"]; full != "" {
+		return c.Parent().CommandPath() + " " + full
+	}
+	return c.UseLine()
 }
 
 //go:embed skills.md

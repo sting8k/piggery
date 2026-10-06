@@ -1,6 +1,11 @@
 package core
 
-import "hash/fnv"
+import (
+	"database/sql"
+	"errors"
+	"fmt"
+	"hash/fnv"
+)
 
 // Words for a session's default name (one word, e.g. otter, linus): short, lowercase a-z, some of
 // them jokes, none a reserved address (isReserved). Changing the list changes only the names of
@@ -60,4 +65,37 @@ func (t *txn) freeWord(teamID, ref string) (string, error) {
 		}
 	}
 	return t.freeName(teamID, nameNouns[start])
+}
+
+// formerName is the name the harness session ref had as a participant before, when it is to be a
+// solo again (teamID ""): its newest person's participant's. That is a member of a team that
+// closed (the session goes on as a solo in the same process). "" when there is
+// none or the session joins a team.
+func (t *txn) formerName(teamID, ref string) (string, error) {
+	if teamID != "" {
+		return "", nil
+	}
+	var name string
+	err := t.QueryRowContext(t.ctx, `SELECT name FROM participants
+		WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?))
+		AND person=1 ORDER BY created_at DESC, rowid DESC LIMIT 1`, ref, ref).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return name, internal(err)
+}
+
+// freeSoloName is name, or name-2, name-3, … while a live solo or an open team has it (the check
+// freeWord makes: a send to the name must reach one).
+func (t *txn) freeSoloName(name string) (string, error) {
+	for i := 1; ; i++ {
+		cand := name
+		if i > 1 {
+			cand = fmt.Sprintf("%s-%d", name, i)
+		}
+		taken, err := t.nameTaken("", cand, true)
+		if err != nil || !taken {
+			return cand, err
+		}
+	}
 }

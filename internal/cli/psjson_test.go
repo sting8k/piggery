@@ -79,8 +79,9 @@ func TestPsJSONProjects(t *testing.T) {
 	}
 }
 
-// ps --json is top's All tab: projects list what top lists, in its order (a team closed within
-// the last hour as a "closed" unit, an older one not), and a worker's ctx and turns are top's
+// ps --json is top's All tab, but for what is gone: projects list what top lists, in its order (a
+// team closed within the last hour as a "closed" unit, an older one not; top's All has no closed
+// team), and a worker's ctx and turns are top's
 // stats (context of the current run, turns of every run).
 func TestPsJSONMatchesTop(t *testing.T) {
 	dir := t.TempDir()
@@ -111,8 +112,7 @@ func TestPsJSONMatchesTop(t *testing.T) {
 	var ids []string // as top.items names them
 	for _, p := range projects {
 		for _, u := range p.Units {
-			if u.Kind == "closed" {
-				ids = append(ids, closedRow+u.ID)
+			if u.Kind == "closed" { // top's All lists none
 				continue
 			}
 			ids = append(ids, closedRow+u.ID) // an open team's line

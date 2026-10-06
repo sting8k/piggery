@@ -60,12 +60,12 @@ func TestFound(t *testing.T) {
 	if _, err := found(s1, "multi"); !errors.As(err, &ce) || ce.RuleID != "found.no_role" {
 		t.Fatalf("several roles, no auto_join_role: %v", err)
 	}
-	r, err := found(s1, "supervisor-executor")
+	r, err := found(s1, "lead-peer")
 	if err != nil || r.ParticipantID != s1.ParticipantID || r.RunID != s1.RunID || r.Token != "" {
 		t.Fatalf("found = %+v, %v; want the same participant and run", r, err)
 	}
 	id, err := e.Identify(ctx, s1, core.IdentifyArgs{RunID: s1.RunID})
-	if err != nil || id.Role != "supervisor" || id.TeamID != r.TeamID || !strings.Contains(id.RoleCard, "team \"api\"") {
+	if err != nil || id.Role != "lead" || id.TeamID != r.TeamID || !strings.Contains(id.RoleCard, "team \"api\"") {
 		t.Fatalf("identify after found = %+v, %v", id, err)
 	}
 	r2, err := found(solo("s2"), "")

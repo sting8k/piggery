@@ -15,6 +15,7 @@ export function render(msgs, heading, now = Date.now()) {
 		if (m.cc_of) attrs += ` cc_of="#${m.cc_of_seq}" cc_of_mail_to="${m.cc_to}"`; // a routing cc copy
 		attrs += ` at="${sentAt(m.created_at, now)}"`;
 		if (now - m.created_at > 60_000) attrs += ` age="${age(now - m.created_at)}"`; // held, or shown again
+		if (m.redelivered) attrs += ` redelivered="true"`; // given before and not acked: whatever its age
 		return `<message ${attrs}>\n${m.body}\n</message>`;
 	});
 	return (

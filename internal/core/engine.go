@@ -25,6 +25,8 @@ type txn struct {
 	solo manifest // the implicit manifest of a solo (teamManifest(""))
 	// shared is the Engine's sharedPrompts.
 	shared func(template, role string) string
+	// taskforces lists the taskforces a cwd can call, one line each (the cards of a solo and a gate).
+	taskforces func(cwd string) []string
 }
 
 // evt is one row for the events table.
@@ -51,7 +53,7 @@ func (e *Engine) inTx(ctx context.Context, fn func(t *txn) error) error {
 			return internal(err)
 		}
 		defer tx.Rollback()
-		if err := fn(&txn{Tx: tx, ctx: ctx, now: now, solo: e.soloManifest(), shared: e.sharedPrompts}); err != nil {
+		if err := fn(&txn{Tx: tx, ctx: ctx, now: now, solo: e.soloManifest(), shared: e.sharedPrompts, taskforces: e.taskforceLines}); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
@@ -75,7 +77,8 @@ func (e *Engine) inTx(ctx context.Context, fn func(t *txn) error) error {
 // A participant in a turn the daemon counts (adapter events) is not woken: the turn gets the
 // mail at its next tool call or at its end, and a wake now would queue a turn of its own. One
 // waiting on a permission prompt is not woken either; the wake comes when the prompt ends. With
-// no mail waiting there is nothing to wake for.
+// no mail waiting there is nothing to wake for. Mail for a gone member that mail wakes starts its
+// worker instead (wake.go).
 func (e *Engine) notifyAfterCommit(participantID string) {
 	var hold int
 	if err := e.db.QueryRow(`SELECT
@@ -86,8 +89,12 @@ func (e *Engine) notifyAfterCommit(participantID string) {
 		FROM participants p WHERE p.id=?`, participantID).Scan(&hold); err == nil && hold > 0 {
 		return
 	}
-	var mode, harness sql.NullString
-	e.db.QueryRow(`SELECT mode, harness FROM participants WHERE id=?`, participantID).Scan(&mode, &harness)
+	var mode, harness, state sql.NullString
+	e.db.QueryRow(`SELECT mode, harness, state FROM participants WHERE id=?`, participantID).Scan(&mode, &harness, &state)
+	if state.String == "gone" && e.wakeable(participantID) {
+		go e.autoWake(participantID) // wake.go; off the sender's goroutine: the driver starts a process
+		return
+	}
 	if mode.String == modeHeadless {
 		if d := e.runtimeFor(harness.String); d != nil {
 			if delivers(d) {
@@ -224,6 +231,10 @@ type manifest struct {
 	Limits   limitMap            `yaml:"limits"`
 	// AutoJoinRole is the role join.auto gives a session in a team with several roles.
 	AutoJoinRole string `yaml:"auto_join_role"`
+	// Taskforce, when present, lets a solo or a gate call the template up with spawn template= (a
+	// temporary team); every key of it lives in this block, so a binary that does not know it runs
+	// the template as an ordinary team (taskforce.go).
+	Taskforce *taskforceSpec `yaml:"taskforce"`
 }
 
 type roleSpec struct {
@@ -327,7 +338,7 @@ func loadManifest(text string) (manifest, []string, error) {
 	if err != nil {
 		return m, nil, err
 	}
-	return m, append(manifestWarnings(m), notifyWarnings(text)...), nil
+	return m, append(append(manifestWarnings(m), notifyWarnings(text)...), taskforceWarnings(text)...), nil
 }
 
 // CheckManifest is loadManifest for a caller that has no use for the parsed manifest (piggery

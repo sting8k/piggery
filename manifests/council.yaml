@@ -2,8 +2,10 @@
 # Every role talks with `send`; routing is the fence: a member reaches only the chair, so members
 # cannot see each other.
 template: council
-summary: A chair asks independent members, each through one lens, about one hard decision and gives the verdict.
+summary: "Read-only: a chair asks independent members, each through one lens, about one hard decision and gives the verdict."
 auto_join_role: chair   # the founder's role when a session founds a team from this template
+taskforce:             # a solo or a gate can also call this up for one job (spawn template=), as a headless team
+  idle_for: 20m          # when every member has been idle this long, the caller gets one notice
 roles:
   chair:
     description: Writes a neutral brief, gets independent opinions, questions them, and gives the verdict.

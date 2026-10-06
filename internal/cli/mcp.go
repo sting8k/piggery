@@ -582,7 +582,7 @@ func (s *mcpServer) callTool(name string, raw json.RawMessage) (string, error) {
 		if err := c.call(proto.VerbAgent, a, &r); err != nil {
 			return "", err
 		}
-		if (a.Action == core.AgentFound || a.Action == core.AgentReopen || a.Action == core.AgentClose) && s.host != "" {
+		if (a.Action == core.AgentFound || a.Action == core.AgentReopen || (a.Action == core.AgentClose && a.Team == "")) && s.host != "" {
 			// This session is now another participant, or the same one in another role: identify
 			// again (auth by host follows it) for its tools and card; Claude re-reads the tools.
 			if err := s.identify(c); err != nil {
@@ -621,6 +621,12 @@ func agentText(a core.AgentArgs, r core.AgentResult) string {
 	case r.Exit != nil:
 		b, _ := json.Marshal(r.Exit)
 		return "stopped (exit " + string(b) + ")"
+	case a.Action == core.AgentSpawn && a.Template != "":
+		return fmt.Sprintf("called up taskforce %s; its task is #%d; write to it as %s, its result comes to you as mail", r.TeamName, r.TaskSeq, r.TeamName)
+	case a.Action == core.AgentClose && a.Team != "":
+		return fmt.Sprintf("closed taskforce %s; stopped: %s", r.TeamName, strings.Join(r.Stopped, ", "))
+	case a.Action == core.AgentClose:
+		return fmt.Sprintf("closed team %s; stopped: %s", r.TeamName, strings.Join(r.Stopped, ", "))
 	case a.Action == core.AgentSpawn:
 		return fmt.Sprintf("spawned %s; its task is #%d (its reply comes to you as mail)", a.Name, r.TaskSeq)
 	case a.Action == core.AgentResume && r.TaskSeq != 0:

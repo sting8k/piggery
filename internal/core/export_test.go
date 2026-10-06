@@ -9,3 +9,6 @@ func SetGCAfterSnapshot(f func()) func() {
 
 // NameWord is the word a session named from ref starts at (names.go).
 func NameWord(ref string) string { return nameNouns[wordStart(ref)] }
+
+// NotifyAfterCommit is the call every mail path ends in (the wake trigger of wake.go).
+func (e *Engine) NotifyAfterCommit(id string) { e.notifyAfterCommit(id) }

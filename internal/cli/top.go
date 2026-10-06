@@ -98,7 +98,8 @@ type topModel struct {
 	logs    map[string]logState // worker run logs read so far, by path
 	ps      proto.PsResult
 	loaded  bool     // a snapshot has arrived
-	tab     string   // "" All, a team id, or tabClosed; a tab that went away falls back to All
+	tab     string   // "" All, a project's directory, or tabClosed; a tab that went away falls back to All
+	tabLo   int      // the first tab the bar shows after All (it slides to keep the selected tab in view)
 	sel     string   // selected member or solo (participant id), "" when the tab has none
 	side    bool     // the sidebar is shown beside the list (wide terminal)
 	full    bool     // the sidebar is shown instead of the list (narrow terminal)
@@ -545,8 +546,8 @@ func (m *topModel) stats() map[string]view.Stats {
 	return out
 }
 
-// tabs are All, then one per team, then Closed last (view.Tabs).
-func (m *topModel) tabs() []view.Tab { return view.Tabs(m.ps.State, time.Now()) }
+// tabs are All, then one per project, then Closed last (view.ProjectTabs).
+func (m *topModel) tabs() []view.Tab { return view.ProjectTabs(m.ps.State, time.Now()) }
 
 // toggleRow opens or closes what the row id stands for (a team's line, or its gone members' line)
 // and remembers it; false when id is neither.
@@ -593,10 +594,10 @@ func (m *topModel) switchTab(d int) {
 	m.keepSel()
 }
 
-// listOf is what the current tab lists (view.BuildList): the folds are the user's (m.fold), stats
+// listOf is what the current tab lists (view.BuildList, All only what is alive): the folds are the user's (m.fold), stats
 // the logs read so far (nil where only the ids are wanted).
 func (m *topModel) listOf(stats map[string]view.Stats, now time.Time) view.List {
-	return view.BuildList(view.ListInput{State: m.ps.State, Tab: m.tab, Now: now, Open: m.fold.Teams, Gone: m.fold.Gone, Stats: stats})
+	return view.BuildList(view.ListInput{State: m.ps.State, Tab: m.tab, Now: now, Open: m.fold.Teams, Gone: m.fold.Gone, Stats: stats, Projects: true})
 }
 
 // items are the selectable ids of the current tab, in display order (list).

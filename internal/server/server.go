@@ -170,12 +170,6 @@ func Run(ctx context.Context, cfg Config) error {
 	if err := manifests.Unpack(cfg.Dir); err != nil {
 		return fmt.Errorf("templates: %w", err)
 	}
-	// The Human's shared prompts: what cannot work is logged and left out, never a reason not to start.
-	var promptWarns []string
-	settings.Prompts, promptWarns = CheckPrompts(cfg.Dir, settings.Prompts)
-	for _, w := range append(settings.Warnings, promptWarns...) {
-		log.Warn("shared prompts", "problem", w)
-	}
 	// Every config file piggery owns gets the keys it lacks, as `piggery setup` does; a file its
 	// parser refuses is only logged here, the parser says why where it is read.
 	filled, errs := EnsureFiles(cfg.Dir)
@@ -184,6 +178,16 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	for _, err := range errs {
 		log.Warn("config file", "err", err)
+	}
+	// The Human's shared prompts, read again: EnsureFiles may have added the entry of one piggery
+	// ships. What cannot work is logged and left out, never a reason not to start.
+	if again, err := LoadSettings(cfg.Dir); err == nil {
+		settings.Prompts = again.Prompts
+	}
+	var promptWarns []string
+	settings.Prompts, promptWarns = CheckPrompts(cfg.Dir, settings.Prompts)
+	for _, w := range append(settings.Warnings, promptWarns...) {
+		log.Warn("shared prompts", "problem", w)
 	}
 	if cfg.Integrations != nil {
 		// The extensions `piggery setup pi|omp|dsh|opencode` installed: rewritten when their integration
@@ -309,6 +313,9 @@ func (s *server) tick(ctx context.Context) {
 			}
 			if _, err := s.eng.Watch(ctx); err != nil && ctx.Err() == nil {
 				s.log.Error("watch", "err", err)
+			}
+			if _, err := s.eng.Taskforces(ctx); err != nil && ctx.Err() == nil {
+				s.log.Error("taskforces", "err", err)
 			}
 			s.checkUpdate(ctx, time.Now())
 		}

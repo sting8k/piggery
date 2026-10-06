@@ -204,6 +204,9 @@ type InboxArgs struct {
 
 type Delivered struct {
 	DeliveryID int64 `json:"delivery_id"`
+	// Redelivered: an earlier delivery of this message exists (it was given before and not acked, so
+	// it is given again). Display only: the rendering marks it, delivery and ack do not look at it.
+	Redelivered bool `json:"redelivered,omitempty"`
 	Message
 }
 

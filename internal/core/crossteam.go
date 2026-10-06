@@ -7,8 +7,8 @@ import (
 	"strings"
 )
 
-// Teams talk to each other only gate to gate (a team's gate: its live participant that joined
-// earliest; a solo is its own gate). Replies too: no reply_to exception.
+// Teams talk to each other only gate to gate (a team's gate: the member teams.gate_id names, live or
+// not; a solo is its own gate). Replies too: no reply_to exception.
 
 type teamRef struct{ id, name string }
 
@@ -31,18 +31,46 @@ func (t *txn) relatedTeams(teamID string) ([]teamRef, error) {
 	return out, internal(rows.Err())
 }
 
-// teamGate returns the gate of teamID: its live (not gone) participant with a role that has the
-// send tool, sessions (not headless) first, then the one that joined earliest; a headless worker
-// only when no such session is left. ok is false when there is none: the team has no gate (mail and
-// workers of leavers wait, leave.go). This is the one place that picks it.
+// teamGate returns the gate of teamID: the member teams.gate_id names. It is stored, not computed: the
+// founder (found), the reopener (reopen), or the next member by join order when the gate leaves
+// (leave.go, event gate_moved). A member that is only gone stays the gate: its mail waits for it.
+// ok is false when the team has none (no member left, or none with a role that has send). This is the
+// one place that reads it.
 func (t *txn) teamGate(teamID string) (gate participant, ok bool, err error) {
+	var id sql.NullString
+	if err := t.QueryRowContext(t.ctx, `SELECT gate_id FROM teams WHERE id=?`, teamID).Scan(&id); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return gate, false, internal(err)
+	}
+	if !id.Valid {
+		return gate, false, nil
+	}
+	return t.participantByID(id.String)
+}
+
+// joinOrder is the order members entered the team: joined_at, which a solo moving in (found, admit,
+// reopen) sets and a member made inside the team leaves NULL (its created_at is then the moment).
+const joinOrder = `COALESCE(joined_at, created_at), created_at, rowid`
+
+// workerRow is a worker the daemon spawned: not a person's session (participants.person). A person's
+// session that a mail woke runs headless but is still a session, so it never counts as a worker.
+const workerRow = `(person=0)`
+
+// setGate stores id (a member of teamID; "" none) as the team's gate.
+func (t *txn) setGate(teamID, id string) error {
+	_, err := t.ExecContext(t.ctx, `UPDATE teams SET gate_id=NULLIF(?,'') WHERE id=?`, id, teamID)
+	return internal(err)
+}
+
+// nextGate is who becomes the gate of teamID when it has none or its gate left: the member that
+// has not left, with a role that has the send tool, sessions (a person's, woken or not) before
+// workers, then the one that joined earliest. ok is false when there is none.
+func (t *txn) nextGate(teamID string) (gate participant, ok bool, err error) {
 	m, err := t.teamManifest(teamID)
 	if err != nil {
 		return gate, false, err
 	}
 	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+` FROM participants
-		WHERE team_id=? AND state<>'gone'
-		ORDER BY COALESCE(mode,'')='headless', created_at, rowid`, teamID)
+		WHERE team_id=? AND left_at IS NULL ORDER BY `+workerRow+`, `+joinOrder, teamID)
 	if err != nil {
 		return gate, false, internal(err)
 	}
@@ -57,6 +85,36 @@ func (t *txn) teamGate(teamID string) (gate participant, ok bool, err error) {
 		}
 	}
 	return gate, false, internal(rows.Err())
+}
+
+// gateIfNone makes member id the gate of teamID when the team has none: the first session whose role
+// has send to enter (a hidden `team up` team has no founder; a team whose gate left with no one
+// to follow). A worker never takes a team's gate this way.
+func (t *txn) gateIfNone(teamID, id string) error {
+	var cur sql.NullString
+	if err := t.QueryRowContext(t.ctx, `SELECT gate_id FROM teams WHERE id=?`, teamID).Scan(&cur); err != nil {
+		return internal(err)
+	}
+	if cur.Valid {
+		return nil
+	}
+	var role sql.NullString
+	var worker bool
+	if err := t.QueryRowContext(t.ctx, `SELECT role, `+workerRow+` FROM participants WHERE id=? AND team_id=? AND left_at IS NULL`,
+		id, teamID).Scan(&role, &worker); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return internal(err)
+	}
+	m, err := t.teamManifest(teamID)
+	if err != nil {
+		return err
+	}
+	if worker || !contains(m.Roles[role.String].Tools, "send") {
+		return nil
+	}
+	return t.setGate(teamID, id)
 }
 
 // resolveSendTarget resolves a send's to: a member of p's own team (id or name) first; then an open

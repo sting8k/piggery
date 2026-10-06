@@ -1,0 +1,29 @@
+# advisor: a taskforce of one. A session calls it up (`spawn template=advisor`) with one hard
+# decision or a stalled approach; the advisor reads what it needs, answers by mail with a
+# recommendation and what would prove it wrong, stays for follow-ups. The caller closes it. Read
+# only. It does not see the caller's transcript: it works from the brief and the files.
+template: advisor
+summary: "A taskforce of one: read-only advice on one hard decision or a stalled approach, with a recommendation, the evidence, the strongest downside and a check that would prove it wrong."
+auto_join_role: advisor   # the only role: the worker a taskforce starts, and the founder's role if a session founds it
+taskforce:             # a solo or a gate calls this up for one job (spawn template=), as a headless team
+  idle_for: 20m          # when it has been idle this long, the caller gets one notice
+roles:
+  advisor:
+    description: "Reads, then answers one hard decision or stalled approach with a recommendation, evidence, risks and a check; edits nothing."
+    instructions_file: prompts/advisor/advisor.md
+    tools: [send, inbox, who]
+    can_spawn: []
+    can_pin: false
+    can_set_cwd: false
+    spawn:                 # how piggery starts this role's workers
+      harness: inherit       # inherit: the main session's harness, else config.yaml harness
+      model: inherit         # inherit: harness profile, else the main session's (same harness), else harness default
+      thinking: inherit      # inherit: same chain as model
+      allow_tools: []      # native tools the harness profile turns off that this role keeps
+routing: []
+timers: []
+limits:                  # none: no limit
+  depth: none              # how deep spawned_by chains may go
+  concurrency: none        # live workers at once
+  messages_per_participant_per_minute: 30
+  max_respawn_per_hour: none

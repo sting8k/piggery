@@ -34,3 +34,23 @@ func TestWriteProfileKeepsExistingWithoutForce(t *testing.T) {
 		t.Fatalf("--force did not write: %s", b)
 	}
 }
+
+// A harness is flagged only when older than the oldest tested version: a newer major is not, a
+// pre-release is older than its release and compares by number, an unparsable version is not.
+func TestOlderThanTested(t *testing.T) {
+	for _, c := range []struct {
+		version string
+		tested  []string
+		want    bool
+	}{
+		{"0.87.0", []string{"0.87.1"}, true},
+		{"1.0.4", []string{"0.87.1"}, false},
+		{"0.2.0-rc.1", []string{"0.2.0"}, true},
+		{"0.2.0-rc.2", []string{"0.2.0-rc.10"}, true},
+		{"nightly", []string{"1.0.0"}, false},
+	} {
+		if got := olderThanTested(c.version, c.tested); got != c.want {
+			t.Errorf("olderThanTested(%q, %v) = %v, want %v", c.version, c.tested, got, c.want)
+		}
+	}
+}

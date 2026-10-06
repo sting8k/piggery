@@ -60,7 +60,7 @@
 		},
 		{
 			"name": "agent",
-			"description": "Manage worker agents. spawn: start a worker (role, name, task; the task arrives as a message, and the worker's reply comes back to you as mail). stop | resume | tail: target = worker name. admit: add a solo session marked admittable in {tool:who} (target) to a role you may spawn (role). templates: list the team templates found can use (summary and roles); read it to pick one. found: create a piggery team from a template (default p2p) rooted at the current directory and become its gate; if you are in a team you leave it. close: close your team (you must be its gate); you become solo and its workers stop. reopen: open again a closed team rooted at the current directory (team = its name) and become its gate; its stopped workers and unread mail come to you. admit, found, close and reopen only when the user asks. A solo session can only use templates, found and reopen.",
+			"description": "Manage worker agents. spawn: start a worker (role, name, task; the task arrives as a message, and the worker's reply comes back to you as mail). spawn with template instead of role calls up a taskforce: a temporary team from a template that has a taskforce block (templates marks them), for a one-off job such as a second opinion or a review; the task goes to its chair, name is its team name (default: the template's), it works in your directory (or in cwd), reports to you and stays for follow-ups until you close it, and you stay where you are, unlike found. A solo session or a team's gate may call one on its own judgment; a taskforce never calls another. stop | resume | tail: target = worker name. admit: add a solo session marked admittable in {tool:who} (target) to a role you may spawn (role). templates: list the team templates found can use (summary and roles); read it to pick one. found: create a piggery team from a template (default p2p) rooted at the current directory and become its gate; if you are in a team you leave it. close: close your team (you must be its gate); you become solo and its workers stop. close with team = a taskforce you called ends it: only its caller closes it, a taskforce never closes itself. reopen: open again a closed team rooted at the current directory (team = its name) and become its gate; its stopped workers and unread mail come to you. admit, found, reopen and close of your own team only when the user asks. A solo session can only use templates, spawn with template, found, reopen and close of a taskforce it called.",
 			"parameters": {
 				"type": "object",
 				"properties": {
@@ -70,27 +70,27 @@
 					},
 					"template": {
 						"type": "string",
-						"description": "found: team template name (default p2p)"
+						"description": "found: team template name (default p2p). spawn: a taskforce template instead of role (never both)"
 					},
 					"team": {
 						"type": "string",
-						"description": "reopen: the closed team's name"
+						"description": "reopen: the closed team's name. close: a taskforce you called (none: your own team)"
 					},
 					"role": {
 						"type": "string",
-						"description": "spawn/admit: the role"
+						"description": "spawn/admit: the role (spawn: instead of template, never both)"
 					},
 					"name": {
 						"type": "string",
-						"description": "spawn: the worker's name"
+						"description": "spawn: the worker's name; with template, the taskforce's team name (default: the template's)"
 					},
 					"task": {
 						"type": "string",
-						"description": "spawn: what the worker should do; resume: optional, a new task for it"
+						"description": "spawn: what the worker (or the taskforce's chair) should do; resume: optional, a new task for it"
 					},
 					"cwd": {
 						"type": "string",
-						"description": "spawn: the worker's directory, relative to yours or absolute (default: yours); needs can_set_cwd; must be inside the team root or a git worktree of its repository"
+						"description": "spawn: the worker's directory, relative to yours or absolute (default: yours); needs can_set_cwd; must be inside the team root or a git worktree of its repository; with template: the taskforce's directory, relative to yours or absolute, inside your root, a git worktree of its repo, or an allowed root (default: yours)"
 					},
 					"target": {
 						"type": "string",

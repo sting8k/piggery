@@ -59,8 +59,8 @@ func TestState(t *testing.T) {
 		t.Fatalf("state = %+v", s)
 	}
 	tm := s.Teams[0]
-	if tm.Gate != "lead-1" || tm.Held != 1 || tm.Unacked != 3 || len(tm.Members) != 2 {
-		t.Fatalf("team = %+v; want gate lead-1, 1 held, 3 unacked (task, a, notice), 2 members", tm)
+	if tm.Template != "m" || tm.Gate != "lead-1" || tm.Held != 1 || tm.Unacked != 3 || len(tm.Members) != 2 {
+		t.Fatalf("team = %+v; want template m, gate lead-1, 1 held, 3 unacked (task, a, notice), 2 members", tm)
 	}
 	byName := map[string]core.MemberState{}
 	for _, m := range tm.Members {

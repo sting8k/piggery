@@ -7,10 +7,12 @@ import (
 )
 
 // Leaving a team: a member that founds a new team leaves its old one. Its workers
-// (reports_to/spawned_by) and its unacked mail move to the team's gate; with no gate (nobody live)
-// they wait, mail held as heldNoGate, and notify is told. When the team has a gate again (a member
-// comes back), the engine moves them there. Mail is never acked here: a moved message is new mail
-// for the gate, acked only by its own completion.
+// (reports_to/spawned_by) and its unacked mail move to the team's gate (a gate that is only gone
+// keeps them in its inbox; notify is told). When the gate itself leaves, the next member by join order
+// is the gate (gate_moved). With no gate at all (no member left that can be one) they wait, mail held
+// as heldNoGate, and notify is told; the first session with send to enter takes the gate and the
+// held mail (backAtGate). Mail is never acked here: a moved message is new mail for the gate, acked
+// only by its own completion.
 
 // heldNoGate is held_reason of mail to a member that left while its team had no gate.
 const heldNoGate = "team.no_gate"
@@ -31,6 +33,22 @@ func (t *txn) leave(p participant, toTeam string) (wake, notice string, err erro
 		payload: map[string]any{"to_team": toTeam}}); err != nil {
 		return "", "", err
 	}
+	// The gate itself leaving is the one thing that moves it: to the next member by join order.
+	if cur, has, err := t.teamGate(p.team); err != nil {
+		return "", "", err
+	} else if has && cur.id == p.id {
+		next, _, err := t.nextGate(p.team) // none: the zero value, stored as no gate
+		if err != nil {
+			return "", "", err
+		}
+		if err := t.setGate(p.team, next.id); err != nil {
+			return "", "", err
+		}
+		if err := t.event(evt{typ: "gate_moved", participant: p.id, team: p.team, ref: next.id,
+			payload: map[string]any{"from": p.id, "to": next.id}}); err != nil {
+			return "", "", err
+		}
+	}
 	gate, msgs, workers, ok, err := t.rerouteToGate(p.team)
 	if err != nil {
 		return "", "", err
@@ -39,7 +57,20 @@ func (t *txn) leave(p participant, toTeam string) (wake, notice string, err erro
 	if ok {
 		payload["to"] = gate.id
 		wake = gate.id
-	} else {
+	}
+	if ok && gate.state == "gone" { // it waits in the gate's inbox for the gate to come back
+		var team string
+		if err := t.QueryRowContext(t.ctx, `SELECT name FROM teams WHERE id=?`, p.team).Scan(&team); err != nil {
+			return "", "", internal(err)
+		}
+		notice = newID(t.now)
+		body := fmt.Sprintf("%s left team %s; its gate %s is not live: %d unacked messages and %d workers of %s wait for %s.",
+			p.name, team, gate.name, msgs, workers, p.name, gate.name)
+		if _, err := t.insertMessage(notice, "", p.team, AddrEngine, AddrNotify, noticeGateLost, "", "", "", body); err != nil {
+			return "", "", err
+		}
+	}
+	if !ok {
 		r, err := t.ExecContext(t.ctx, `UPDATE messages SET held_reason=? WHERE to_id=? AND acked_at IS NULL
 			AND held_reason IS NULL`, heldNoGate, p.id)
 		if err != nil {
@@ -108,6 +139,9 @@ func (t *txn) rerouteToGate(team string) (gate participant, msgs, workers int, o
 // for a gate, what its leavers left behind moves to the gate now, with one rerouted event.
 // It returns the gate to wake ("" = nothing moved).
 func (t *txn) backAtGate(p participant) (string, error) {
+	if err := t.gateIfNone(p.team, p.id); err != nil { // a team with no gate: p may be it
+		return "", err
+	}
 	var waiting int
 	err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM messages WHERE held_reason=? AND to_id IN
 		(SELECT id FROM participants WHERE team_id=? AND left_at IS NOT NULL)`, heldNoGate, p.team).Scan(&waiting)

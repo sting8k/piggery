@@ -127,12 +127,15 @@ func TestTeamGate(t *testing.T) {
 	if err := e.Presence(ctx, x[0], core.PresenceArgs{Event: core.PresenceShutdown}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Send(ctx, y[0], core.SendArgs{To: "x2", Body: "hi"}); err != nil {
-		t.Fatalf("x1 gone, x2 is the gate: %v", err)
+	// A gone gate stays the gate (stored): x2 does not take over, mail to the team
+	// is queued for x1.
+	denied(y[0], "x2", "team_gate.not_gate", "x1")
+	if _, err := e.Send(ctx, y[0], core.SendArgs{To: "x", Body: "hi"}); err != nil {
+		t.Fatalf("x1 gone, still the gate: mail to the team is queued: %v", err)
 	}
 
-	// Only roles with send can be the gate: a supervisor-executor-like team whose planner is gone
-	// has a live dev but no gate.
+	// Only roles with send can be the gate: in a team whose planner is gone, the gate is still the
+	// planner, not the live dev.
 	pd, err := e.TeamUp(ctx, core.TeamUpArgs{Name: "pd", Cwd: t.TempDir(), Manifest: "template: pd\n" +
 		"roles: {planner: {tools: [send, inbox, who]}, dev: {tools: [inbox, who]}}\n"})
 	if err != nil {
@@ -147,12 +150,10 @@ func TestTeamGate(t *testing.T) {
 		c, _ := e.Authenticate(ctx, j.ID, j.Token)
 		return c
 	}
+	pdJoin("dev1", "dev") // joined first, but its role has no send: it is not the gate
 	planner := pdJoin("planner", "planner")
-	pdJoin("dev1", "dev")
 	if err := e.Presence(ctx, planner, core.PresenceArgs{Event: core.PresenceShutdown}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Send(ctx, y[0], core.SendArgs{To: "dev1", Body: "hi"}); !errors.As(err, &ce) || ce.RuleID != "team_gate.none" {
-		t.Fatalf("a live dev (no send) as gate: %v", err)
-	}
+	denied(y[0], "dev1", "team_gate.not_gate", "planner")
 }

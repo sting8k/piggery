@@ -21,7 +21,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-//go:embed *.yaml prompts
+//go:embed *.yaml prompts rules
 var builtin embed.FS
 
 // Templates live in one place, <home>/templates/<name>/:
@@ -197,36 +197,92 @@ func unpack(home string, src fs.FS) error {
 			record[name] = rec
 		}
 		for rel, content := range tf {
-			p := filepath.Join(dir, filepath.FromSlash(rel))
-			want := hash(content)
-			cur, err := os.ReadFile(p)
-			switch {
-			case errors.Is(err, fs.ErrNotExist):
-				if _, written := rec[rel]; written {
-					continue // written before, removed by the user
-				}
-			case err != nil:
-				return err
-			case hash(cur) == want:
-				rec[rel] = want // already this version (also when edited to it by hand): ours again
-				continue
-			case hash(cur) != rec[rel]:
-				continue // changed by the user (or not ours)
-			}
-			if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			if err := syncFile(filepath.Join(dir, filepath.FromSlash(rel)), content, rec, rel); err != nil {
 				return err
 			}
-			if err := os.WriteFile(p, content, 0o600); err != nil {
-				return err
-			}
-			rec[rel] = want
 		}
 	}
+	return writeRecord(filepath.Join(root, recordFile), record)
+}
+
+// syncFile brings built-in file p (key in rec, the hashes Unpack wrote) to content: written when
+// missing and never written, updated while it still has the hash recorded; a file the user
+// changed or removed, or one that was never ours, is left alone.
+func syncFile(p string, content []byte, rec map[string]string, key string) error {
+	want := hash(content)
+	cur, err := os.ReadFile(p)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		if _, written := rec[key]; written {
+			return nil // written before, removed by the user
+		}
+	case err != nil:
+		return err
+	case hash(cur) == want:
+		rec[key] = want // already this version (also when edited to it by hand): ours again
+		return nil
+	case hash(cur) != rec[key]:
+		return nil // changed by the user (or not ours)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+		return err
+	}
+	if err := os.WriteFile(p, content, 0o600); err != nil {
+		return err
+	}
+	rec[key] = want
+	return nil
+}
+
+func writeRecord(p string, record any) error {
 	b, err := json.MarshalIndent(record, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(root, recordFile), append(b, '\n'), 0o600)
+	return os.WriteFile(p, append(b, '\n'), 0o600)
+}
+
+// BuiltinPrompt is a shared prompt piggery ships: File (relative to the piggery dir, as a
+// config.yaml `prompts` entry names it) for Roles.
+type BuiltinPrompt struct {
+	File  string
+	Roles []string
+}
+
+// BuiltinPrompts are the shared prompts piggery ships, for the roles of its built-in templates.
+var BuiltinPrompts = []BuiltinPrompt{{File: "rules/general-policy.md", Roles: []string{"lead-peer/*", "slp/*"}}}
+
+// UnpackRules brings the BuiltinPrompts files into <home>/rules the way Unpack does a template's
+// files (<home>/rules/.builtin.json records them). taken are the prompts that became piggery's in
+// this call (written, or found with the same text): the caller adds their config entry once, so
+// an entry or a file the user removed later is not brought back.
+func UnpackRules(home string) (taken []BuiltinPrompt, err error) {
+	recPath := filepath.Join(home, "rules", recordFile)
+	rec := map[string]string{}
+	if b, err := os.ReadFile(recPath); err == nil {
+		if err := json.Unmarshal(b, &rec); err != nil {
+			return nil, fmt.Errorf("%s: %w", recPath, err)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	for _, bp := range BuiltinPrompts {
+		content, err := builtin.ReadFile(bp.File)
+		if err != nil {
+			return nil, err
+		}
+		_, known := rec[bp.File]
+		if err := syncFile(filepath.Join(home, filepath.FromSlash(bp.File)), content, rec, bp.File); err != nil {
+			return nil, err
+		}
+		if _, now := rec[bp.File]; now && !known {
+			taken = append(taken, bp)
+		}
+	}
+	if len(rec) == 0 {
+		return nil, nil
+	}
+	return taken, writeRecord(recPath, rec)
 }
 
 // New writes the current built-in from as a new template name in the home, for the user to

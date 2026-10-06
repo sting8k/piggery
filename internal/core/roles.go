@@ -59,16 +59,17 @@ func validateRoles(m manifest) error {
 // harness's profile, else what the ancestor session reports when it runs the same harness, else ""
 // (the harness default). Values pass through as written.
 func (e *Engine) workerSettings(t *txn, m manifest, role, spawner, harness string) (h, model, thinking string, err error) {
-	// The nearest non-headless ancestor: the session a human opened that started the chain.
+	// The nearest ancestor that is a person's session: the session a human opened that started the chain.
 	var anc struct{ harness, model, thinking string }
 	for id, hops := spawner, 0; id != "" && hops < 64; hops++ {
-		var mode, up string
-		if err := t.QueryRowContext(t.ctx, `SELECT COALESCE(mode,''), COALESCE(harness,''), COALESCE(session_model,''),
+		var person bool
+		var up string
+		if err := t.QueryRowContext(t.ctx, `SELECT person, COALESCE(harness,''), COALESCE(session_model,''),
 			COALESCE(session_thinking,''), COALESCE(spawned_by,'') FROM participants WHERE id=?`, id).Scan(
-			&mode, &anc.harness, &anc.model, &anc.thinking, &up); err != nil {
+			&person, &anc.harness, &anc.model, &anc.thinking, &up); err != nil {
 			return "", "", "", internal(err)
 		}
-		if mode != modeHeadless {
+		if person {
 			break
 		}
 		anc = struct{ harness, model, thinking string }{}

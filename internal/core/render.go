@@ -36,6 +36,9 @@ func RenderMail(msgs []Delivered, heading, toolPrefix string, now time.Time) str
 		if d := now.Sub(sent); d > time.Minute { // held, or shown again
 			a += fmt.Sprintf(` age="%s"`, shortAge(d))
 		}
+		if m.Redelivered { // given before and not acked: whatever its age
+			a += ` redelivered="true"`
+		}
 		parts[i] = fmt.Sprintf("<message %s>\n%s\n</message>", a, m.Body)
 	}
 	return fmt.Sprintf("[piggery] %s:\n\n%s\n\nTo reply, use the %ssend tool with to=<sender> and reply_to=<id> (the #N).",

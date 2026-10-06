@@ -353,7 +353,11 @@ func (t *txn) giveMailWhere(p participant, n int64, where string, args ...any) (
 	var given []Delivered
 	text := ""
 	for _, m := range msgs {
-		next := RenderMail(append(given, Delivered{Message: m}), "", p.toolPrefix, now)
+		again, err := t.redelivered(m.ID, 0)
+		if err != nil {
+			return "", err
+		}
+		next := RenderMail(append(given, Delivered{Redelivered: again, Message: m}), "", p.toolPrefix, now)
 		if len(given) > 0 && len(next) > maxMailText {
 			break
 		}
@@ -366,7 +370,7 @@ func (t *txn) giveMailWhere(p participant, n int64, where string, args ...any) (
 		if err != nil {
 			return "", internal(err)
 		}
-		given = append(given, Delivered{DeliveryID: id, Message: m})
+		given = append(given, Delivered{DeliveryID: id, Redelivered: again, Message: m})
 		text = next
 	}
 	return text, nil

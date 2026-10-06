@@ -21,6 +21,8 @@ type TeamDownArgs struct {
 	Team string `json:"team"` // id or name
 	// closedBy is the gate that closed its own team (agent close); "" = the admin.
 	closedBy string
+	// why is the daemon's reason when nobody closed it (caller_gone, start_failed): kept in the event.
+	why string
 }
 
 type TeamDownResult struct {
@@ -47,7 +49,7 @@ func (e *Engine) TeamDown(ctx context.Context, a TeamDownArgs) (TeamDownResult, 
 			return internal(err)
 		}
 		rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+`, COALESCE(mode,'') FROM participants
-			WHERE team_id=? AND state<>'gone' ORDER BY created_at, rowid`, res.TeamID)
+			WHERE team_id=? AND state<>'gone' ORDER BY `+joinOrder, res.TeamID)
 		if err != nil {
 			return internal(err)
 		}
@@ -90,6 +92,9 @@ func (e *Engine) TeamDown(ctx context.Context, a TeamDownArgs) (TeamDownResult, 
 		by := "admin"
 		if a.closedBy != "" {
 			by = a.closedBy
+		}
+		if a.why != "" && a.closedBy == "" {
+			by = a.why
 		}
 		return t.event(evt{typ: "team_down", team: res.TeamID, ref: res.TeamID, participant: a.closedBy,
 			payload: map[string]any{"gone": len(live), "workers": len(workers), "timers_off": timersOff, "by": by}})

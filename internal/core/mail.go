@@ -322,11 +322,23 @@ func (e *Engine) Inbox(ctx context.Context, c Caller, a InboxArgs) ([]Delivered,
 					return internal(err)
 				}
 			}
-			out = append(out, Delivered{DeliveryID: did, Message: m})
+			again, err := t.redelivered(m.ID, did)
+			if err != nil {
+				return err
+			}
+			out = append(out, Delivered{DeliveryID: did, Redelivered: again, Message: m})
 		}
 		return nil
 	})
 	return out, err
+}
+
+// redelivered reports whether message id has a delivery other than delivery did: it was given
+// before (and, being still unacked, is given again).
+func (t *txn) redelivered(id string, did int64) (bool, error) {
+	var again bool
+	err := t.QueryRowContext(t.ctx, `SELECT EXISTS (SELECT 1 FROM deliveries WHERE message_id=? AND id<>?)`, id, did).Scan(&again)
+	return again, internal(err)
 }
 
 // openBatch admits deliveries into (run, n): closed -> batch_closed; a new n below the
@@ -470,7 +482,7 @@ func (e *Engine) Who(ctx context.Context, c Caller) ([]Presence, error) {
 			if err != nil {
 				return err
 			}
-			rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+` FROM participants WHERE team_id=? ORDER BY created_at, rowid`, p.team)
+			rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+` FROM participants WHERE team_id=? ORDER BY `+joinOrder, p.team)
 			if err != nil {
 				return internal(err)
 			}

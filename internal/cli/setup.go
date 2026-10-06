@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/sting8k/piggery/internal/driver/local"
@@ -211,13 +213,83 @@ func (p problem) String() string {
 	return p.Text + "; fix: " + p.Fix
 }
 
+// olderThanTested: version is older than the oldest of tested, the floor piggery was tested from (a
+// newer one is not flagged). A version that does not parse, or no parsable tested one: false.
+func olderThanTested(version string, tested []string) bool {
+	v, ok := parseVersion(version)
+	if !ok {
+		return false
+	}
+	var oldest *semver
+	for _, t := range tested {
+		if tv, ok := parseVersion(t); ok && (oldest == nil || tv.compare(*oldest) < 0) {
+			oldest = &tv
+		}
+	}
+	return oldest != nil && v.compare(*oldest) < 0
+}
+
+// semver is "1.2.3-rc.1": the numbers, and the pre-release parts (none: a release).
+type semver struct{ nums, pre []string }
+
+// parseVersion reads dotted numbers and an optional "-pre.release" (a leading "v" is dropped).
+func parseVersion(s string) (v semver, ok bool) {
+	core, pre, _ := strings.Cut(strings.TrimPrefix(strings.TrimSpace(s), "v"), "-")
+	v.nums = strings.Split(core, ".")
+	for _, p := range v.nums {
+		if _, err := strconv.Atoi(p); err != nil {
+			return semver{}, false
+		}
+	}
+	if pre != "" {
+		v.pre = strings.Split(pre, ".")
+	}
+	return v, true
+}
+
+// comparePart: by value when both are numbers, else as text.
+func comparePart(x, y string) int {
+	xi, xerr := strconv.Atoi(x)
+	yi, yerr := strconv.Atoi(y)
+	if xerr == nil && yerr == nil {
+		return cmp.Compare(xi, yi)
+	}
+	return cmp.Compare(x, y)
+}
+
+// compare: the numbers (a missing one is 0); then a pre-release is older than its release, and
+// pre-release parts go one by one, the shorter list first.
+func (a semver) compare(b semver) int {
+	for i := 0; i < max(len(a.nums), len(b.nums)); i++ {
+		x, y := "0", "0"
+		if i < len(a.nums) {
+			x = a.nums[i]
+		}
+		if i < len(b.nums) {
+			y = b.nums[i]
+		}
+		if c := comparePart(x, y); c != 0 {
+			return c
+		}
+	}
+	if len(a.pre) == 0 || len(b.pre) == 0 {
+		return cmp.Compare(len(b.pre), len(a.pre)) // no pre-release is the newer
+	}
+	for i := 0; i < min(len(a.pre), len(b.pre)); i++ {
+		if c := comparePart(a.pre[i], b.pre[i]); c != 0 {
+			return c
+		}
+	}
+	return cmp.Compare(len(a.pre), len(b.pre))
+}
+
 func (st harnessState) line() string {
 	where := "not on PATH"
 	if st.Path != "" {
 		where = st.Version
 		if where == "" {
 			where = "version unknown"
-		} else if len(st.Tested) > 0 && !slices.Contains(st.Tested, st.Version) {
+		} else if olderThanTested(st.Version, st.Tested) {
 			where += fmt.Sprintf(" (not tested; tested: %s)", strings.Join(st.Tested, ", "))
 		}
 	}
@@ -279,9 +351,9 @@ func harnessWarnings(dir string) []string {
 	}
 	var out []string
 	for _, st := range harnessStates(setupOpts{dir: dir, self: self}) {
-		if st.Path != "" && len(st.Tested) > 0 && !slices.Contains(st.Tested, st.Version) {
-			out = append(out, fmt.Sprintf("%s %s is not a tested version (tested: %s); it may misbehave",
-				st.Name, firstNonEmpty(st.Version, "(unknown)"), strings.Join(st.Tested, ", ")))
+		if st.Path != "" && olderThanTested(st.Version, st.Tested) {
+			out = append(out, fmt.Sprintf("%s %s is older than the oldest tested version (tested: %s); it may misbehave",
+				st.Name, st.Version, strings.Join(st.Tested, ", ")))
 		}
 		for _, p := range st.Problems {
 			out = append(out, st.Name+": "+p.String())

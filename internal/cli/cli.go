@@ -195,13 +195,20 @@ func (e *env) teamUp(args []string) error {
 		}
 		c.Close()
 		manifest, err = manifests.Resolve(pos[0], e.dir)
+		if errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("no template %q; templates: %s (piggery template list)", pos[0], e.templateNames())
+		}
 	}
 	if err != nil {
 		return err
 	}
 	return do(e, proto.VerbTeamUp, core.TeamUpArgs{Name: *name, Manifest: manifest, Cwd: dir},
 		func(w io.Writer, t core.Team) {
-			fmt.Fprintf(w, "team %s name=%s template=%s root=%s\n", t.ID, t.Name, t.Template, t.RootCwd)
+			tpl := ""
+			if s := view.ShownTemplate(t.Name, t.Template); s != "" {
+				tpl = " [" + s + "]"
+			}
+			fmt.Fprintf(w, "team %s%s up in %s\n", t.Name, tpl, t.RootCwd)
 			for _, warn := range t.Warnings {
 				fmt.Fprintf(w, "warning: %s\n", warn)
 			}
@@ -255,8 +262,13 @@ func (e *env) printEvents(evs []core.Event) {
 			fmt.Fprintln(e.stdout, string(b))
 			continue
 		}
-		lines = append(lines, fmt.Sprintf("%d %s %-10s participant=%s run=%s ref=%s %s",
-			ev.Seq, clock(ev.Ts), ev.Type, ev.Participant, ev.RunID, ev.RefID, ev.Payload))
+		line := fmt.Sprintf("%d %s %-10s", ev.Seq, clock(ev.Ts), ev.Type)
+		for _, f := range [][2]string{{"participant", ev.Participant}, {"run", ev.RunID}, {"ref", ev.RefID}} {
+			if f[1] != "" {
+				line += " " + f[0] + "=" + f[1]
+			}
+		}
+		lines = append(lines, line+" "+string(ev.Payload))
 	}
 	for _, l := range e.relabel(lines) {
 		fmt.Fprintln(e.stdout, l)
@@ -349,8 +361,6 @@ func (e *env) doctor(args []string) error {
 	switch {
 	case e.json:
 		fmt.Fprintln(e.stdout, string(raw))
-	case len(r.Findings) == 0:
-		fmt.Fprintln(e.stdout, "no findings")
 	}
 	if !e.json {
 		var lines []string
@@ -361,7 +371,11 @@ func (e *env) doctor(args []string) error {
 			fmt.Fprintln(e.stdout, l)
 		}
 		// Harnesses set up wrong or at an untested version: warnings, not findings (exit unchanged).
-		for _, w := range harnessWarnings(e.dir) {
+		warnings := harnessWarnings(e.dir)
+		if len(r.Findings) == 0 && len(warnings) == 0 {
+			fmt.Fprintln(e.stdout, "no findings")
+		}
+		for _, w := range warnings {
 			fmt.Fprintln(e.stdout, "warning: "+w)
 		}
 	}
@@ -463,8 +477,9 @@ func (e *env) agent(args []string) error {
 	switch action {
 	case core.AgentSpawn:
 		fs.StringVar(&a.Role, "role", "", "worker role")
-		fs.StringVar(&a.Name, "name", "", "worker name")
-		fs.StringVar(&a.Cwd, "cwd", "", "the worker's directory, relative to yours or absolute (your role needs can_set_cwd)")
+		fs.StringVar(&a.Template, "template", "", "call up a taskforce from this template instead of a worker role")
+		fs.StringVar(&a.Name, "name", "", "worker name (with --template: the taskforce's team name, default the template's)")
+		fs.StringVar(&a.Cwd, "cwd", "", "the worker's or taskforce's directory, relative to yours or absolute (a worker: your role needs can_set_cwd)")
 	case core.AgentTail:
 		fs.IntVar(&a.Lines, "lines", 20, "records to show")
 	case core.AgentStop, core.AgentResume, core.AgentTemplates, core.AgentClose, core.AgentReopen:
@@ -483,12 +498,19 @@ func (e *env) agent(args []string) error {
 		return do(e, proto.VerbAgent, a, func(w io.Writer, r core.AgentResult) { fmt.Fprintln(w, r.Text) })
 	}
 	if action == core.AgentTemplates || action == core.AgentClose {
-		if len(pos) != 0 {
+		if len(pos) != 0 && !(action == core.AgentClose && len(pos) == 1) {
 			return fmt.Errorf("%w: agent %s takes no arguments", errUsage, action)
+		}
+		if action == core.AgentClose && len(pos) == 1 { // a taskforce this participant called up
+			a.Team = pos[0]
 		}
 		return do(e, proto.VerbAgent, a, func(w io.Writer, r core.AgentResult) {
 			if action == core.AgentTemplates {
 				fmt.Fprintln(w, r.Text)
+				return
+			}
+			if a.Team != "" {
+				fmt.Fprintf(w, "closed taskforce %s; stopped: %s\n", r.TeamName, strings.Join(r.Stopped, ", "))
 				return
 			}
 			fmt.Fprintf(w, "closed team %s; stopped: %s\n", r.TeamName, strings.Join(r.Stopped, ", "))
@@ -499,10 +521,10 @@ func (e *env) agent(args []string) error {
 		})
 	}
 	withTask := action == core.AgentResume && len(pos) == 2
-	if (len(pos) != 1 && !withTask) || (action == core.AgentSpawn && (a.Role == "" || a.Name == "")) {
+	if (len(pos) != 1 && !withTask) || (action == core.AgentSpawn && !(a.Role != "" && a.Name != "" && a.Template == "") && !(a.Template != "" && a.Role == "")) {
 		switch action {
 		case core.AgentSpawn:
-			return fmt.Errorf("%w: agent spawn --role R --name N <task>", errUsage)
+			return fmt.Errorf("%w: agent spawn --role R --name N <task> | agent spawn --template T [--name N] <task>", errUsage)
 		case core.AgentResume:
 			return fmt.Errorf("%w: agent resume <worker> [task]", errUsage)
 		}
@@ -519,6 +541,10 @@ func (e *env) agent(args []string) error {
 	return do(e, proto.VerbAgent, a, func(w io.Writer, r core.AgentResult) {
 		switch action {
 		case core.AgentSpawn:
+			if a.Template != "" {
+				fmt.Fprintf(w, "called up taskforce %s; its task is #%d; write to it as %s\n", r.TeamName, r.TaskSeq, r.TeamName)
+				return
+			}
 			fmt.Fprintf(w, "spawned %s; its task is #%d\n", a.Name, r.TaskSeq)
 		case core.AgentResume:
 			if r.TaskSeq != 0 {

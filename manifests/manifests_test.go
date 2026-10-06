@@ -93,7 +93,7 @@ func TestUnpackUpgrade(t *testing.T) {
 // changed) and never over an existing one.
 func TestNew(t *testing.T) {
 	home := t.TempDir()
-	dir, err := New(home, "mine", "supervisor-executor")
+	dir, err := New(home, "mine", "lead-peer")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,9 +101,9 @@ func TestNew(t *testing.T) {
 		t.Fatalf("new template %s: %v\n%s", dir, err, m)
 	}
 	// Only the model line changes (it names the team): the rest of the file, comments included.
-	orig, _ := builtin.ReadFile("supervisor-executor.yaml")
+	orig, _ := builtin.ReadFile("lead-peer.yaml")
 	got, _ := os.ReadFile(filepath.Join(dir, ManifestFile))
-	if want := strings.Replace(string(orig), "template: supervisor-executor", "template: mine", 1); string(got) != want {
+	if want := strings.Replace(string(orig), "template: lead-peer", "template: mine", 1); string(got) != want {
 		t.Fatalf("copied manifest:\n%s\nwant:\n%s", got, want)
 	}
 	if _, err := New(home, "mine", "p2p"); err == nil {

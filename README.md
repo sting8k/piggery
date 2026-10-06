@@ -19,7 +19,7 @@ flowchart LR
   a["agent on pi"] <-->|mail| farm
   b["agent on Claude Code"] <-->|mail| farm
   c["agent on …"] <-->|mail| farm
-  farm(("🐖 piggery<br/>mailbox + gate")) --- shape[["a team layout<br/>supervisor → workers<br/>peer ↔ peer<br/>…"]]
+  farm(("🐖 piggery<br/>mailbox + gate")) --- shape[["a team layout<br/>lead → peers<br/>peer ↔ peer<br/>…"]]
   shape --> work[/"your tasks and projects,<br/>plowed"/]
 ```
 
@@ -27,7 +27,7 @@ flowchart LR
   session, and a worker's answer wakes whoever is waiting for it.
 - **A gate on every mail and every spawn.** It checks them against the team's layout, a small
   YAML file you pick or write.
-- **Layouts are files.** Six come built in (see [Farm layouts](#farm-layouts)); any other shape is
+- **Layouts are files.** Eight come built in (see [Farm layouts](#farm-layouts)); any other shape is
   one more file.
 
 ## Harnesses
@@ -67,7 +67,7 @@ against the release's `checksums.txt`, and puts it in `~/.local/bin`.
 ## Quick start
 
 1. Open pi, Claude Code, Codex, omp, `dsh web` or opencode in your project.
-2. Ask it for a team: *"make a supervisor-executor team to fix the failing tests"*.
+2. Ask it for a team: *"make a lead-peer team to fix the failing tests"*.
 3. Watch the farm: `piggery top`.
 
 More:
@@ -80,10 +80,12 @@ More:
 | Template | Who does what |
 | --- | --- |
 | `p2p` | Peers that talk freely and spawn more peers. |
-| `supervisor-executor` | A supervisor splits the goal into checkable tasks; executors do them. |
+| `lead-peer` | A lead owns the plan and judges the results; peers own scopes and speak up with evidence. |
 | `slp` | You steer a supervisor; each lane has a lead and peers, often in its own git worktree. |
 | `council` | A chair asks members for independent views on one hard decision. |
 | `amp-like` | A lead does the work; an oracle (hard reasoning) and a reviewer (diffs) each answer once. |
+| `dual-lens` | A taskforce: a chair takes one hard question or review, asks two lenses on different models, then makes them answer each other's conflicts. |
+| `advisor` | A taskforce of one: read-only advice on a hard decision or a stalled approach, with a check that would prove it wrong. |
 | `gastown-like` | A mayor splits the work; polecats do each task on its own branch; a refinery merges them one at a time. |
 
 Each one is drawn, with when to pick it, in [manifests/README.md](manifests/README.md).

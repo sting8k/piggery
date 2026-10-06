@@ -388,18 +388,19 @@ export function apply(ctx, config) {
 				return `founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`;
 			}
 			if (p.action === "templates") return (await cl().call("agent", { action: "templates" })).text;
-			if (!part.inTeam) throw new Error("you are a solo session: only actions templates, found and reopen (when the user asks for a team)");
+			if (!part.inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team)) throw new Error("you are a solo session: only actions templates, found, reopen, and spawn with template or close with team for a taskforce");
 			const r = await cl().call("agent", p);
-			if (p.action === "close") {
+			if (p.action === "close" && !p.team) {
 				// The team is closed and this participant left it (no retire push to the caller).
 				part.becomeSolo(false);
 				const failed = r.failed?.length ? `; could not stop: ${r.failed.join(", ")}` : "";
 				return `closed team ${r.team_name}` + (r.stopped?.length ? `; stopped ${r.stopped.join(", ")}` : "") + `${failed}. You are solo now; your tools: ${TOOLS.map((t) => PREFIX + t).join(", ")}`;
 			}
+			if (p.action === "close") return `closed taskforce ${r.team_name}` + (r.stopped?.length ? `; stopped ${r.stopped.join(", ")}` : "");
 			if (p.action === "tail") return (r.records ?? []).map((x) => JSON.stringify(x)).join("\n") || "(no output)";
 			if (r.exit) return `stopped (exit ${JSON.stringify(r.exit)})`;
 			// Names and #N only, no ids.
-			if (p.action === "spawn") return `spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`;
+			if (p.action === "spawn") return p.template ? `called up taskforce ${r.team_name}; its task is #${r.task_seq}; write to it as ${r.team_name}, its result comes to you as mail` : `spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`;
 			if (p.action === "resume" && r.task_seq) return `resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`;
 			if (p.action === "admit") return `admitted ${p.target} as ${p.role}`;
 			return `${p.action} ok: ${p.target}`;

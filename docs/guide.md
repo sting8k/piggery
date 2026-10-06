@@ -10,7 +10,7 @@ shows one. Install and first steps are in the [README](../README.md).
   added to it (`piggery setup <harness>`), every new session starts **solo**: it is on the farm,
   in no team, with a mailbox and four tools (`send`, `inbox`, `who`, `agent`).
 - **Team**: a group of agents that share a shape. A solo session founds one when you ask ("make a
-  supervisor-executor team for this"); it becomes the team's **gate**, the one that talks to you
+  lead-peer team for this"); it becomes the team's **gate**, the one that talks to you
   and to other teams. Teams are named after their directory.
 - **Role**: what one member of a team may do. The team's **template** says who may write to whom,
   who may spawn workers, which tools each role has, and how many workers may run at once. The
@@ -27,33 +27,68 @@ shows one. Install and first steps are in the [README](../README.md).
 
 1. Add piggery once per harness: `piggery setup pi` (or `claude`, `codex`, `omp`, `dsh`, `opencode`), then
    restart sessions that were open. `piggery setup` alone shows where each harness stands.
-2. Open the harness in your project and ask: *"found a supervisor-executor team to fix the failing
+2. Open the harness in your project and ask: *"found a lead-peer team to fix the failing
    tests"*. The session picks the template (`agent action=templates` lists them), founds the team
-   rooted at its directory and becomes the gate. From a shell instead:
-   `piggery team up supervisor-executor --cwd .`.
+   rooted at its directory and becomes the gate. `piggery template list` shows them too.
 3. The gate spawns workers as the template allows, gives them tasks by mail, and gets a handback
    from each. You keep talking to the gate, in your own session.
 
-Built-in templates: `supervisor-executor` (a supervisor splits the goal; executors do the tasks),
+Built-in templates: `lead-peer` (a lead owns the plan and judges the results; peers own scopes and speak up with evidence),
 `slp` (a supervisor steers a lane: one lead, peers with separate scopes), `council` (a chair asks
 members for independent views on one decision), `amp-like` (a lead does the work and calls an oracle
-or a reviewer that answers once), `gastown-like` (a mayor splits the work, polecats do each task on
+or a reviewer that answers once), `dual-lens` (a chair settles one hard question or review
+with two lenses on different models), `advisor` (read-only advice on a hard decision, from one agent), `gastown-like` (a mayor splits the work, polecats do each task on
 its own branch, a refinery merges them one at a time), `p2p` (peers that talk freely and spawn peers). Each one
 is drawn, with when to pick it, in [manifests/README.md](../manifests/README.md).
 
 **Mixing harnesses.** A role can name a harness (`spawn: {harness: claude}` in the template); a
 role that names none uses the harness of the session that founded the team, and a founder with none
 uses `harness:` in `config.yaml`. So a pi gate can have Claude workers and a Codex reviewer. Each
-harness needs its `piggery setup <harness>` and, for workers, its profile (`piggery setup` writes
-them in `~/.piggery/harness/`).
+harness needs its `piggery setup <harness>` and, for workers, its profile (the daemon writes a
+missing one in `~/.piggery/harness/` at start; `piggery setup` does too).
 
 **Join a team you already have open.** A solo session opened in a team's root directory can be
 admitted by a member whose role may spawn that role: ask the member, "admit the session in
-<name> as executor". Founding, being admitted, or resuming a session that was in a team still open are the only ways into a team for an open session.
+<name> as peer". Founding, being admitted, or resuming a session that was in a team still open are the only ways into a team for an open session.
 
 **Limits.** The template caps how many workers run at once and how fast mail may flow; a mail over
-the cap is held until you `release` it. A template is frozen into a team when it is brought up:
+the cap is held until you `release` it. A template is frozen into a team when it is founded:
 editing it changes the next team only.
+
+## Call up a taskforce
+
+**When**: a one-off job that wants a small team of its own, such as a second opinion, a review, or
+one hard decision, while you stay in your session.
+
+A taskforce is a temporary team made from a template that has a `taskforce:` block (the built-in
+`council`, `dual-lens` and `advisor` do; so can a template of yours). Ask your session (a solo, or the gate of
+a team) for it, and give the task; the session may also call one on its own, as a main session
+calls a subagent:
+
+> *"Call a dual-lens taskforce to review this diff before I merge it."*
+
+The session spawns the template with `spawn template=dual-lens` and the task. piggery builds the
+team in your directory (or in `cwd`, see below) and starts its `auto_join_role` (here the chair) as a headless worker; the
+task is its first mail. The chair asks its two lenses, settles their answers, and sends the result
+back to your session as mail. `top` and `ps` show the taskforce under your session. Unlike
+`found`, you do not move: you stay where you are, and the taskforce reports to you.
+
+- **What it may do is in its prompt.** The built-in ones (`advisor`, `council`, `dual-lens`) answer
+  and do not edit files unless the task says they may. A template of yours can be a short job that
+  edits. This is a rule in the prompt, not one piggery enforces.
+- **It works where you say.** By default in your directory. Give the task a `cwd` and the taskforce,
+  and its chair, work there: a path relative to yours or absolute, inside your project root (a
+  gate's team root, a solo's own directory), a git worktree of that repo, or a directory in
+  `spawn.allowed_roots`; anywhere else is refused. Your role needs no `can_set_cwd` for this.
+- **You close it.** The chair answers and stays for follow-ups; it never closes the taskforce itself.
+  When you are done, close it (`close` with `team=<its name>`, or `piggery agent close <team>`). If
+  every member has been idle for `taskforce.idle_for` (20 minutes in the built-ins), you get one
+  notice to close it or use it again.
+- **It does not outlive you.** When your session goes away, leaves its team, or its team closes,
+  the taskforce closes with it. A daemon restart ends it too. So does its chair stopping: the other members
+  are stopped and you get one notice. A closed taskforce is not reopened; call its template up again.
+- **Only a solo or a gate calls one**, and only a template with a `taskforce:` block; a taskforce
+  never calls another. To start a worker of your own team's role, spawn that role as before.
 
 ## Watch and step in
 
@@ -73,6 +108,13 @@ read, except `x` in `top`. In `top`, a member's current task sits under its name
 assignment from whoever it reports to, and whether it handed back.
 Gone members with nobody live below them fold into one `✗ N gone` line per team (`ps` too); `enter`
 on a team or on that line folds or opens it, and `top` remembers it.
+
+`top` has one tab per project (a directory), between **All** and **Closed**; move with `←/→` or click.
+All lists only what is alive: a team whose members are all gone and a gone solo are in their
+project's tab, a closed team in Closed, and none of them in All; a team with some members alive keeps
+its `N members ✗ gone` row. A tab is named by its directory's last name (`a/api` and `b/api` when two
+clash), and a bar too wide for the window slides, with `‹ +N` and `+N ›` for the tabs left out. A
+taskforce has no tab: it sits under the session that called it.
 
 **Emergency stop.** `x` in `top` on the selected worker (it asks `kill <name>? y/n` once), or
 `piggery x <worker>`, kills it. Kill asks first: SIGTERM to the worker, so its harness and extensions
@@ -107,7 +149,7 @@ one JSON line on stdin: `id, kind, team, gate, dir, body, created_at`. `gate` is
 | `reply` | the gate finished a turn on team mail and sent nothing: its answer is in its session |
 | `settled` | the gate sent its last message and no member is working or has mail waiting |
 | `failed` | the gate's turn on team mail failed: that mail waits for new mail to be given again |
-| `gate_lost` | a team has no live member left (its mail and workers wait for the next gate) |
+| `gate_lost` | a team's gate left and the next one is not live, or no member can be the gate (its mail and workers wait for it) |
 
 It never fires for a chat turn of yours, a turn that is not over mail, an interrupted turn, a
 headless worker, or a member that is not the gate; whether you are looking at the session is for
@@ -125,16 +167,41 @@ session is its own gate, and a member that is not its team's gate asks its gate 
 (what the agents call for) lists your team and then one line per other team and solo session.
 Mail shows where it came from, for example `from="bme (peer, team B)"`.
 
+A team's gate is the session that founded it (or reopened it). It stays the gate while it is only
+gone, closed or crashed: mail for it waits in its inbox, a send to the team from another team is
+queued, and no peer takes its place or closes the team meanwhile. The gate changes only when it
+leaves the team; then the member that joined next whose role has `send` takes over (a session before any worker).
+
 A session can leave a team by founding a new one: its workers and unread mail move to the team's
-next gate.
+gate.
+
+## A member that is gone gets its mail
+
+A member of an open team whose session you closed is `gone`. Mail for it does not wait for you to
+come back: the daemon resumes its session as a headless worker, which gets the mail (`piggery ps`
+shows it as a worker from then on). It goes through the same limits as `piggery resume`
+(`max_respawn_per_hour`, `concurrency`, directories); when one refuses, the mail waits and the
+sender sees nothing.
+
+- **Never the gate.** The team's gate (the one that founded it, or reopened it; it stays the gate
+  while it is closed or crashed) is not woken: mail for it waits until you open its session
+  again. A solo session, a member that left, and a closed team are never woken.
+- **Once per mail.** A woken worker that stops with the mail unread is not woken again by that
+  mail; a newer message wakes it again.
+- **Opening the session yourself takes it back.** If you open, by hand, a session that was woken, the
+  worker is stopped (it gets half a second to finish its turn, then it is killed, about 2.5 seconds at
+  most: a turn can be cut, and its unread mail comes again) and the session is yours again, with the same
+  name, role and mail. A worker piggery spawned stays protected: opening its session never takes it
+  over.
 
 ## Close, reopen, clean up
 
 - **Close**: ask the gate to close its team, or `piggery team down demo`. Workers stop, every
   member is gone, unread mail stays unread, and a session that was in the team becomes solo in the
-  same session, so you can keep chatting or found a new team.
+  same session, under the name it had (`name-2` if a live solo or an open team has it now), so you
+  can keep chatting or found a new team.
 - **Reopen**: until cleanup removes it, ask a solo session in the team's root, "reopen team demo".
-  The team comes back with the manifest it was brought up with; workers stay stopped until the gate
+  The team comes back with the manifest it was founded with, and that session is its gate; workers stay stopped until the gate
   resumes them.
 - **Clean up** is automatic. The daemon runs it at start and every 24 hours: a team closed for
   longer than `gc.closed_after` (14 days) and a solo session gone for that long are archived to
@@ -153,7 +220,7 @@ Everything piggery keeps is in `~/.piggery`. Some of it is yours to edit; the re
 | `templates/<name>/` | yes | team templates: `manifest.yaml` and the prompt files it names |
 | `harness/<harness>.json` | yes | how workers of one harness start (command, model, blacklist) |
 | `hooks/notify.d/` | yes | your notification hooks (above) |
-| `rules/*.md`, any file you name | yes | your own rules for `prompts:` (below) |
+| `rules/*.md`, any file you name | yes | your own rules for `prompts:` (below); `rules/general-policy.md` comes with piggery for `lead-peer` and `slp` |
 | `serve.log` | read | the daemon's log: **where problems are written** |
 | `piggery.db`, `piggery.sock`, `piggery.lock`, `admin.token` | no | state, socket, lock, your admin credential |
 | `logs/`, `run/`, `sessions/`, `archive/`, `backups/`, `cache/`, `plugins/` | no | worker logs, scratch of running workers, session data, gc archives, database copies, cached reads, copies of piggery's adapters |
@@ -164,7 +231,7 @@ and order. It never overwrites what you wrote.
 
 **When a change takes effect.** `config.yaml`: after a restart (`piggery restart`; it stops workers,
 `piggery resume <name>` brings them back), except `display.columns`, read on every run.
-`harness/<harness>.json`: at the next spawn or resume. A template: at the next `team up` (a
+`harness/<harness>.json`: at the next spawn or resume. A template: at the next team found (a
 running team keeps the one it started with). A rules file: at the next session start.
 
 Run `piggery check` before `piggery restart`: it reads `config.yaml`, the harness profiles, your
@@ -174,8 +241,8 @@ and what would be skipped or ignored (`warning:`), without starting or changing 
 **On a mistake.** A key `config.yaml` does not know, or a bad value, stops the daemon from
 starting: the command only says it could not connect, and the reason, naming the key, is in
 `~/.piggery/serve.log`. A mistake in `prompts:` never stops anything: the bad entry is skipped and
-`serve.log` has one line naming it. A template that does not parse is refused when you bring the
-team up, with the reason.
+`serve.log` has one line naming it. A template that does not parse is refused when a team is founded
+from it, with the reason.
 
 ### Recipes
 
@@ -190,7 +257,7 @@ harness: claude        # pi, claude, codex, omp, dsh or opencode
 role's `spawn.model` in the template, the harness profile's `model`, the model of the session that
 began the spawn chain, the harness default. `inherit` (the default) means "keep going down the
 chain". Thinking follows the same chain, in the harness's own levels. Pin the harness when you pin
-a model: names and levels belong to one harness (`team up` warns when a role sets `spawn.model` or
+a model: names and levels belong to one harness (`piggery check` warns when a role sets `spawn.model` or
 `spawn.thinking` and leaves `spawn.harness` as `inherit`).
 
 ```jsonc
@@ -221,9 +288,9 @@ roles you name, in every project and harness:
 # config.yaml
 prompts:
   - file: rules/code.md                 # relative to ~/.piggery, or absolute
-    roles: [executor, peer, lead]
+    roles: [peer, lead]
   - file: rules/delegation.md
-    roles: [supervisor-executor/supervisor, chair, solo]
+    roles: [lead-peer/lead, chair, solo]
 ```
 
 A role is `<role>` (in every template), `<template>/<role>` (that template only; the template is the
@@ -235,26 +302,25 @@ a session already running keeps its card. The list itself needs a restart.
 **Your own template.**
 
 ```sh
-piggery template new mine --from supervisor-executor
+piggery template new mine --from lead-peer
 $EDITOR ~/.piggery/templates/mine/manifest.yaml
-piggery team up mine --cwd .
 ```
 
-Then change the roles, their prompts (`instructions:` inline or `instructions_file:` next to the
+Then ask a session to found a `mine` team. Change the roles, their prompts (`instructions:` inline or `instructions_file:` next to the
 manifest), the routing rules (the first rule matching a sender and receiver decides; none means
 denied), the limits and the timers:
 
 ```yaml
-template: mine                 # the template's name; also the default team name
+template: mine                 # the template's name
 roles:
-  supervisor: {tools: [send, inbox, who, agent], can_spawn: [executor], instructions_file: prompts/supervisor.md}
-  executor:   {tools: [send, inbox, who], spawn: {model: inherit}}
+  lead: {tools: [send, inbox, who, agent], can_spawn: [peer], instructions_file: prompts/lead.md}
+  peer: {tools: [send, inbox, who], spawn: {model: inherit}}
 routing:
-  - {from: supervisor, to: executor, allow: true}
-  - {from: executor, to: supervisor, allow: true, cc: [supervisor]}
+  - {from: lead, to: peer, allow: true}
+  - {from: peer, to: lead, allow: true, cc: [lead]}
 limits: {depth: 2, concurrency: 4, messages_per_participant_per_minute: 30}
 timers:
-  - {on: executor, silent_for: 20m, notify: reports_to}   # nudge when a worker is silent that long
+  - {on: peer, silent_for: 20m, notify: reports_to}   # nudge when a worker is silent that long
 ```
 
 `piggery` keeps a built-in you never edited up to date; a file you edited or deleted is left as it
@@ -291,7 +357,7 @@ Remove a column to hide it; the name is always shown.
   itself. Claude Code, Codex and Paseo are only reported: `ps` and `top` show `outdated: codex (v0 < v1):
   piggery setup --outdated`. Run that command: it updates every installed integration that is outdated
   and says what to do next (restart the sessions that were open, reload the Paseo app).
-- **A worker does not start.** Its harness profile is missing or wrong (`piggery setup` writes them),
+- **A worker does not start.** Its harness profile is wrong (the daemon and `piggery setup` write a missing one; `piggery setup --force` resets it),
   or the harness has no login for the daemon's `HOME`. `piggery tail <worker>` shows the harness's
   own error.
 - **Upgrade.** `piggery update` installs the latest release in place of the running binary (its
@@ -304,8 +370,10 @@ Remove a column to hide it; the name is always shown.
   `config.yaml` turns the check off; a build from source never asks.
 - **After a crash or a restart.** State and mail are in SQLite, so nothing is lost. The next command
   starts the daemon again and open sessions reconnect by themselves. It marks every agent whose
-  process or connection is gone as `gone`, never respawns workers and never acks mail: bring a worker
-  back with `piggery resume <name>`, and its unread mail comes again on its next run.
+  process or connection is gone as `gone`, never respawns workers because of the restart and never
+  acks mail: bring a worker back with `piggery resume <name>`, and its unread mail comes again on its
+  next run. (New mail for a gone member that is not the gate does wake it, restart or not: see
+  [A member that is gone gets its mail](#a-member-that-is-gone-gets-its-mail).)
 - **Turn piggery off for one session**, for example to read an old session's history without
   joining: `PIGGERY_DISABLED=1 pi --resume …` (the pi, omp, dsh and opencode adapters honor it).
 - **Two mail systems.** Remove `pi-peer` from pi's packages while using piggery: both give the model a

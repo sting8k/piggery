@@ -7,7 +7,7 @@ import "fmt"
 // implicit "" role of a manifest with these tools and the limits of the built-in p2p template
 // (WithSoloTemplate).
 
-// soloTools are a solo's tools; of agent it may only found.
+// soloTools are a solo's tools; of agent it may only found, reopen, close a taskforce and spawn template=.
 var soloTools = []string{"send", "inbox", "who", "agent"}
 
 // WithSoloTemplate takes a solo's limits from manifest text (the server passes the built-in
@@ -25,7 +25,7 @@ func (e *Engine) soloManifest() manifest {
 }
 
 // soloCard is the role card of a solo.
-func soloCard(p participant) string {
+func soloCard(p participant, taskforces []string) string {
 	return fmt.Sprintf("You are %s, a solo piggery session: you are in no team. ", p.name) +
 		"Mail from others arrives as a user message with a header naming the sender and the message's #N." +
 		toolTips(p.toolPrefix, soloTools) +
@@ -34,5 +34,6 @@ func soloCard(p participant) string {
 		" the team is rooted at your directory and you become its gate. When asked to reopen a closed team rooted" +
 		" at your directory, use " + p.toolPrefix + "agent action=reopen team=<name>." +
 		// The guide is not installed as a harness skill (it would go stale): the model asks for it.
+		callTaskforceText(p.toolPrefix, taskforces) +
 		" For the rest of piggery (templates, workers, shell commands), run `piggery skills`.\n"
 }

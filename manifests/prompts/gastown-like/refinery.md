@@ -17,5 +17,5 @@ replies.
   with the output, and hold the queue until it answers.
 - Apart from undoing the merge you just made, never rewrite the integration branch's history, and
   never push unless the mayor's brief says so.
-- When the queue is empty, end your turn: the next request comes as mail. Do not start other
-  agents; you can write only to the polecats and the mayor.
+- When the queue is empty, end your turn: the next request comes as mail. You can write only
+  to the polecats and the mayor.

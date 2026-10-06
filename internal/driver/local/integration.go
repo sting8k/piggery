@@ -8,10 +8,10 @@ import "strings"
 // was keeps it. Status compares these integers, never the build version, and what is installed
 // carries its integer as PIGGERY_INTEGRATION_VERSION=N.
 var integrationVersions = map[string]int{
-	"pi":       4,
-	"omp":      4,
-	"dsh":      5,
-	"opencode": 2,
+	"pi":       9,
+	"omp":      9,
+	"dsh":      10,
+	"opencode": 7,
 	"claude":   1,
 	"codex":    1,
 	"paseo":    3,

@@ -57,6 +57,11 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 				fmt.Sprintf("team %s is rooted at %s; you are in %s", a.Team, root, cwd), nil,
 				map[string]any{"team": a.Team, "cwd": cwd})
 		}
+		if parent, err := t.taskforceParent(teamID); err != nil {
+			return err
+		} else if parent != "" {
+			return errf(CodeInvalid, "team %s was a taskforce: it is not reopened; call its template up again", a.Team)
+		}
 		m, err := t.teamManifest(teamID)
 		if err != nil {
 			return err
@@ -65,7 +70,7 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 		if role == "" {
 			return errf(CodeInvalid, "team %s has several roles and no auto_join_role", a.Team)
 		}
-		old, hasOld, err := t.oldGate(teamID, m)
+		old, hasOld, err := t.oldGate(teamID)
 		if err != nil {
 			return err
 		}
@@ -116,14 +121,29 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 			if err != nil {
 				return err
 			}
-			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET team_id=?, role=?, name=? WHERE id=?`,
-				teamID, role, name, p.id); err != nil {
+			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET team_id=?, role=?, name=?, joined_at=? WHERE id=?`,
+				teamID, role, name, t.now, p.id); err != nil {
 				return internal(err)
 			}
 			gate.team, gate.role, gate.name = teamID, role, name
 			res = AgentResult{ParticipantID: p.id, RunID: p.run}
 		}
 		res.TeamID, res.TeamName = teamID, a.Team
+		// The reopener is the gate (the old gate's own session: it already is).
+		if contains(m.Roles[role].Tools, "send") {
+			if err := t.setGate(teamID, gate.id); err != nil {
+				return err
+			}
+		}
+		// A member row whose session went on as a newer row (a solo that joined again after the team
+		// closed) is not a member of the reopened team: it leaves, its mail goes to the gate below.
+		dropped, err := t.dropSuperseded(teamID)
+		if err != nil {
+			return err
+		}
+		if dropped > 0 {
+			payload["superseded"] = dropped
+		}
 		now, msgs, workers, ok, err := t.rerouteToGate(teamID)
 		if err != nil {
 			return err
@@ -157,25 +177,15 @@ type oldGateRow struct {
 	ref string
 }
 
-// oldGate is who was the gate of a closed team: the gate rule (crossteam.go teamGate) over the
-// members that did not leave, whatever their state (team down made them all gone), sessions
-// only (a worker is never replaced by a session).
-func (t *txn) oldGate(teamID string, m manifest) (g oldGateRow, ok bool, err error) {
-	rows, err := t.QueryContext(t.ctx, `SELECT `+participantCols+`, COALESCE(harness_ref,'') FROM participants
-		WHERE team_id=? AND left_at IS NULL AND COALESCE(mode,'')<>'headless' ORDER BY created_at, rowid`, teamID)
-	if err != nil {
-		return g, false, internal(err)
+// oldGate is who was the gate of a closed team: the member teams.gate_id names (team down keeps it),
+// when it is a session that did not leave (a worker is never replaced by a session).
+func (t *txn) oldGate(teamID string) (g oldGateRow, ok bool, err error) {
+	g.participant, err = scanParticipant(t.QueryRowContext(t.ctx, `SELECT `+participantCols+`, COALESCE(harness_ref,'') FROM participants
+		WHERE id=(SELECT gate_id FROM teams WHERE id=?) AND left_at IS NULL AND NOT `+workerRow, teamID), &g.ref)
+	if errors.Is(err, sql.ErrNoRows) {
+		return oldGateRow{}, false, nil
 	}
-	defer rows.Close()
-	for rows.Next() {
-		if g.participant, err = scanParticipant(rows, &g.ref); err != nil {
-			return g, false, internal(err)
-		}
-		if contains(m.Roles[g.role].Tools, "send") {
-			return g, true, nil
-		}
-	}
-	return oldGateRow{}, false, internal(rows.Err())
+	return g, err == nil, internal(err)
 }
 
 // reopenSummary is what the new gate reads after reopen: the team and template, each other
@@ -185,7 +195,7 @@ func (t *txn) reopenSummary(team string, gate participant, m manifest) (string, 
 	fmt.Fprintf(&b, "Reopened team %s (template %s); you are %s (%s), its gate.\n", team, m.Template, gate.name, gate.role)
 	rows, err := t.QueryContext(t.ctx, `SELECT name, COALESCE(role,''), COALESCE(mode,'')='headless', state, last_activity,
 		(SELECT COUNT(*) FROM messages WHERE to_id=participants.id AND acked_at IS NULL)
-		FROM participants WHERE team_id=? AND id<>? AND left_at IS NULL ORDER BY created_at, rowid`, gate.team, gate.id)
+		FROM participants WHERE team_id=? AND id<>? AND left_at IS NULL ORDER BY `+joinOrder, gate.team, gate.id)
 	if err != nil {
 		return "", internal(err)
 	}

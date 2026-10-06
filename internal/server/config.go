@@ -158,7 +158,7 @@ func configKeys() []configKey {
 		{"spawn.allowed_roots", "[" + strings.Join(d.AllowedRoots, ", ") + "]",
 			"absolute directories outside a team's root where a worker may be spawned with a cwd (the root and its repo's git worktrees always may)"},
 		{"update.check", "true", "ask GitHub once a day whether a newer piggery release is out, and say so in top, setup and update --check; nothing is installed (a dev build never asks)"},
-		{"prompts", "[]", "your prompt files by role, added to those roles' cards: - {file: rules/code.md, roles: [executor, solo, supervisor-executor/supervisor]} (file: relative to this directory or absolute; the file is read at each session start, the list needs a restart)"},
+		{"prompts", "[]", "your prompt files by role, added to those roles' cards: - {file: rules/code.md, roles: [peer, solo, lead-peer/lead]} (file: relative to this directory or absolute; the file is read at each session start, the list needs a restart)"},
 	}
 }
 
@@ -261,6 +261,74 @@ func EnsureConfig(dir string) (added, manual []string, err error) {
 		return nil, nil, fmt.Errorf("%s: cannot add %s: %w", path, strings.Join(added, ", "), err)
 	}
 	return added, manual, os.WriteFile(path, out, 0o600)
+}
+
+// AddPrompt appends e to config.yaml's prompts as a block item, keeping every byte of the file
+// (`prompts: []` becomes a block; a missing key is added at the end). A list it cannot place an
+// item in (written as a flow list with items) is left alone: added is false, for the user to add.
+func AddPrompt(dir string, e PromptEntry) (added bool, err error) {
+	path := ConfigPath(dir)
+	cur, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+	var doc yaml.Node
+	if err := yaml.Unmarshal(cur, &doc); err != nil {
+		return false, fmt.Errorf("%s: %w", path, err)
+	}
+	if len(doc.Content) != 1 || doc.Content[0].Kind != yaml.MappingNode {
+		return false, nil
+	}
+	root := doc.Content[0]
+	roles := make([]string, len(e.Roles))
+	for i, r := range e.Roles {
+		roles[i] = strconv.Quote(r)
+	}
+	item := func(indent string) string {
+		return fmt.Sprintf("%s- file: %s\n%s  roles: [%s]\n", indent, e.File, indent, strings.Join(roles, ", "))
+	}
+	lines := strings.SplitAfter(string(cur), "\n")
+	if lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	if len(lines) > 0 && !strings.HasSuffix(lines[len(lines)-1], "\n") {
+		lines[len(lines)-1] += "\n"
+	}
+	seq, next := mapKey(root, "prompts"), 0 // next: line of the key after prompts (0: none)
+	for i := 0; i+2 < len(root.Content); i += 2 {
+		if root.Content[i].Value == "prompts" {
+			next = root.Content[i+2].Line
+		}
+	}
+	switch {
+	case seq == nil:
+		lines = append(lines, "prompts:\n"+item("  "))
+	case seq.Kind != yaml.SequenceNode || seq.Style&yaml.FlowStyle != 0 && len(seq.Content) > 0:
+		return false, nil
+	case seq.Style&yaml.FlowStyle != 0: // prompts: [] (a comment after it stays)
+		l := lines[seq.Line-1]
+		end := seq.Column - 1 + strings.Index(l[seq.Column-1:], "]") + 1
+		lines[seq.Line-1] = strings.TrimRight(l[:seq.Column-1], " ") + l[end:] + item("  ")
+	default: // after the list's last line: before the next key and the comments over it
+		at := len(lines)
+		if next > 0 {
+			at = next - 1
+		}
+		for at > 0 && (strings.TrimSpace(lines[at-1]) == "" || strings.HasPrefix(lines[at-1], "#")) {
+			at--
+		}
+		first := lines[seq.Content[0].Line-1]
+		ins := item(first[:len(first)-len(strings.TrimLeft(first, " "))])
+		lines = append(lines[:at], append([]string{ins}, lines[at:]...)...)
+	}
+	out := []byte(strings.Join(lines, ""))
+	var check configFile // never write a file the daemon would refuse
+	dec := yaml.NewDecoder(bytes.NewReader(out))
+	dec.KnownFields(true)
+	if err := dec.Decode(&check); err != nil && !errors.Is(err, io.EOF) {
+		return false, fmt.Errorf("%s: cannot add a prompts entry for %s: %w", path, e.File, err)
+	}
+	return true, os.WriteFile(path, out, 0o600)
 }
 
 // mapKey is the value node of key in mapping n (nil: none, or n is not a mapping).
