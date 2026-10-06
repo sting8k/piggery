@@ -16,6 +16,9 @@ Windows (experimental, amd64 and arm64):
 - **A worker's agent directory shares the human's without Developer Mode.** Where a symlink cannot
   be made, pi's and omp's entries become junctions and hard links, not a copy of the whole
   directory at each spawn: a worker's sessions and a login it refreshed are the human's own again.
+- **A Claude worker starts whatever the length of its role card.** Windows limits a command line
+  to 32,767 characters, which a card carrying your own `prompts` rules can pass; the card goes to
+  Claude Code in a file of the run's directory there (`--append-system-prompt-file`).
 - **A worker that stops reading its stdin no longer hangs the daemon's write to it** (a Windows
   pipe takes no deadline); the write is given up on after two seconds, as on Linux and macOS.
 - **`piggery setup codex` quotes piggery's path in the hook command only when it has a space** or

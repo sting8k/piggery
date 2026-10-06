@@ -76,8 +76,7 @@ func TestExitCode259IsNotAliveProcess(t *testing.T) {
 
 // What Start passes an npm .cmd shim reaches the program as it was: cmd.exe would read the line a
 // batch file is started with by its own rules (os/exec documents that Go does not quote for it),
-// cut it at the first newline and expand %VAR%, and a Claude worker's role card has both. So
-// prepareCommand runs the shim's target directly. The shim here is npm's own form (cmd-shim), its
+// cut it at the first newline and expand %VAR%. So prepareCommand runs the shim's target directly. The shim here is npm's own form (cmd-shim), its
 // node.exe this test binary (the shim runs the node.exe beside it first) and its script an argument.
 func TestArgumentsSurviveAnNpmShim(t *testing.T) {
 	dir := t.TempDir()

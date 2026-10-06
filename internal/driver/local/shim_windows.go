@@ -11,11 +11,10 @@ import (
 )
 
 // CreateProcess runs a .cmd shim through cmd.exe, which reads the line it is given by rules of its
-// own: it ends the line at the first newline and expands %VAR%, so a Claude worker's multi-line role
-// card would arrive cut after its first line (Go does not quote for cmd.exe, os/exec says so). So a
-// shim of a form cmdshim.go reads is not run: its target is, directly, with the arguments as they
-// are. A shim of another form is run as it is, unless an argument has a newline, which it could not
-// pass on.
+// own: it ends the line at the first newline and expands %VAR%, so an argument of several lines
+// would arrive cut after its first (Go does not quote for cmd.exe, os/exec says so). So a shim of a
+// form cmdshim.go reads is not run: its target is, directly, with the arguments as they are. A shim
+// of another form is run as it is, unless an argument has a newline, which it could not pass on.
 
 // prepareCommand points cmd at what a .cmd shim runs, when cmd.Path is one.
 func prepareCommand(cmd *exec.Cmd) error {
