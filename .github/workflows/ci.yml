@@ -36,7 +36,19 @@ jobs:
         with:
           node-version: 22
       - run: go vet ./...
-      - run: go test -race ./...
+      - name: Go tests
+        if: runner.os != 'Windows'
+        run: go test -race ./...
+      # Windows proves the Windows code: no -race (a slow cgo build; the other two catch races), and
+      # Git for Windows' sh, ps, sleep and coreutils off PATH, so a test cannot pass by borrowing a
+      # tool a user's Windows lacks. git itself stays (Git\cmd).
+      - name: Go tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr|bin|mingw64)' }) -join ';'
+          Get-Command sh, ps, sleep, ls -CommandType Application -ErrorAction SilentlyContinue | Format-Table Name, Source
+          go test ./...
       - run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
       - name: Paseo plugin
         working-directory: extensions/paseo

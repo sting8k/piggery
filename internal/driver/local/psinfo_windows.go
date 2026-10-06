@@ -11,14 +11,20 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// stillActive is GetExitCodeProcess's code for a process that has not exited.
-const stillActive = 259
-
 // psInfo reads the OS start time (unix ms) and the program (the image's full path: Windows keeps
 // no argv a reader could split) of pid. alive=false when there is no such process or it has
 // exited; err when it exists but cannot be read (another user's).
+//
+// A process is alive while its handle is not signalled (WaitForSingleObject with no wait): its exit
+// code cannot say, 259 (STILL_ACTIVE) is also what a process that exited with 259 leaves. Reading the
+// handle needs SYNCHRONIZE; a process that refuses it (another user's) is read with the query right
+// alone, and then a 259 is taken as running.
 func psInfo(_ context.Context, pid int) (start int64, command string, alive bool, err error) {
-	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	h, err := windows.OpenProcess(windows.SYNCHRONIZE|windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	synced := err == nil
+	if err == windows.ERROR_ACCESS_DENIED {
+		h, err = windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	}
 	if err == windows.ERROR_INVALID_PARAMETER {
 		return 0, "", false, nil // no such process
 	}
@@ -26,9 +32,12 @@ func psInfo(_ context.Context, pid int) (start int64, command string, alive bool
 		return 0, "", false, fmt.Errorf("read process %d: %w", pid, err)
 	}
 	defer windows.CloseHandle(h)
-	var code uint32
-	if err := windows.GetExitCodeProcess(h, &code); err == nil && code != stillActive {
-		return 0, "", false, nil // exited, its handle kept open by someone
+	if synced {
+		if ev, err := windows.WaitForSingleObject(h, 0); err == nil && ev != uint32(windows.WAIT_TIMEOUT) {
+			return 0, "", false, nil // exited, its handle kept open by someone
+		}
+	} else if code, ok := exitCode(h); ok && code != 259 {
+		return 0, "", false, nil
 	}
 	var ct, et, kt, ut windows.Filetime
 	if err := windows.GetProcessTimes(h, &ct, &et, &kt, &ut); err != nil {
@@ -40,6 +49,11 @@ func psInfo(_ context.Context, pid int) (start int64, command string, alive bool
 		return 0, "", false, fmt.Errorf("read process %d image: %w", pid, err)
 	}
 	return ct.Nanoseconds() / 1_000_000, windows.UTF16ToString(buf[:n]), true, nil
+}
+
+func exitCode(h windows.Handle) (uint32, bool) {
+	var code uint32
+	return code, windows.GetExitCodeProcess(h, &code) == nil
 }
 
 // startedProgram is the program recorded for a worker started as cmd: the image the OS runs for

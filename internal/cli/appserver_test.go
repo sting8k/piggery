@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -46,7 +47,9 @@ func TestSharedAppServerThreads(t *testing.T) {
 	t.Setenv("PIGGERY_DISABLED", "")
 
 	e := &env{dir: dir, stdout: io.Discard}
-	cwdA, cwdB := t.TempDir(), t.TempDir()
+	// The daemon keeps a cwd with its short (8.3) names resolved, as Windows temp dirs have them.
+	cwdA, _ := filepath.EvalSymlinks(t.TempDir())
+	cwdB, _ := filepath.EvalSymlinks(t.TempDir())
 	for _, th := range []struct{ session, cwd string }{{"thread-a", cwdA}, {"thread-b", cwdB}} {
 		e.runHook("codex", "SessionStart", strings.NewReader(fmt.Sprintf(`{"session_id":%q,"source":"startup","cwd":%s}`, th.session, mustJSON(th.cwd))), io.Discard)
 	}

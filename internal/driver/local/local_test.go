@@ -45,6 +45,12 @@ func TestHelperProcess(t *testing.T) {
 	switch mode {
 	case "sleep":
 		time.Sleep(time.Hour)
+	case "argv": // the arguments after "--", as JSON, to the file PGDRV_OUT (Windows tests)
+		b, _ := json.Marshal(os.Args[slices.Index(os.Args, "--")+1:])
+		os.WriteFile(os.Getenv("PGDRV_OUT"), b, 0o600)
+		os.Exit(0)
+	case "exit259": // STILL_ACTIVE as an exit code (Windows tests)
+		os.Exit(259)
 	case "replay":
 		var leaked []string
 		for _, kv := range os.Environ() {
