@@ -82,3 +82,36 @@ func TestSetupNotify(t *testing.T) {
 		t.Fatal("a notice's body ran as a command")
 	}
 }
+
+// What `setup notify add` writes on Windows is a file the daemon there runs and setup knows as its
+// own: a .ps1 (never a .sh, which Windows cannot run), marked, with its topic filled in, and plain
+// ASCII (Windows PowerShell reads a file without a BOM in the ANSI code page). herdr has no script.
+func TestNotifyScriptsForWindows(t *testing.T) {
+	for target, file := range map[string]string{"desktop": "desktop.ps1", "ntfy:alerts": "ntfy-alerts.ps1"} {
+		tg, err := parseNotifyTarget(target, "windows")
+		if err != nil || tg.file != file {
+			t.Fatalf("%s: file %q, %v; want %s", target, tg.file, err, file)
+		}
+		b, err := tg.content()
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(t.TempDir(), tg.file)
+		os.WriteFile(path, b, 0o600)
+		if !writtenBySetup(path) || !strings.HasPrefix(string(b), notifyMarker+target+"\n") || strings.Contains(string(b), "{{") {
+			t.Errorf("%s: not marked as written for %s, or a placeholder is left:\n%.200s", file, target, b)
+		}
+		for i, c := range b {
+			if c > 127 || c == '\r' {
+				t.Errorf("%s: byte %d is %#x; want plain ASCII with LF", file, i, c)
+				break
+			}
+		}
+		if req, opt := tg.needs(); len(req)+len(opt) != 0 {
+			t.Errorf("%s needs %v %v on Windows; want nothing installed", target, req, opt)
+		}
+	}
+	if _, err := parseNotifyTarget("herdr", "windows"); err == nil {
+		t.Error("herdr has a Windows target, with no script for it")
+	}
+}
