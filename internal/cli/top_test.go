@@ -87,6 +87,7 @@ func TestTopTailFollowsTheSelection(t *testing.T) {
 // new tab; a refresh keeps it while the row is there, else takes the tab's first row; a tab whose
 // project has nothing left falls back to All.
 func TestTopTabsKeepASelection(t *testing.T) {
+	skipOnWindows(t, "the fixture's paths are unix paths; view.TestRootsAndRelCwdFollowTheOSSeparator covers Windows ones")
 	ps := proto.PsResult{State: core.State{
 		Teams: []core.TeamState{
 			{ID: "ta", Name: "a", Root: "/p/a", Members: []core.MemberState{{ID: "a1", Name: "a1"}, {ID: "a2", Name: "a2"}}},
