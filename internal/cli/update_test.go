@@ -18,6 +18,7 @@ import (
 // one in checksums.txt is refused and the running binary stays; the right one replaces it (the
 // asset for this os/arch, through a symlink to the binary, keeping its mode).
 func TestUpdate(t *testing.T) {
+	skipOnWindows(t, "piggery update for Windows is a later step: no Windows asset, and a running .exe cannot be replaced in place")
 	newBin, otherBin := []byte("piggery v0.2.0 linux arm64"), []byte("piggery v0.2.0 darwin arm64")
 	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 	sums := sum(otherBin) + "  piggery-darwin-arm64\n" + sum(newBin) + "  piggery-linux-arm64\n"

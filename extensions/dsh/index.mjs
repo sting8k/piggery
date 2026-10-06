@@ -16,7 +16,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { Turns } from "../pi/adapter.mjs";
-import { Client } from "../pi/client.mjs";
+import { Client, daemonAddress } from "../pi/client.mjs";
 import { afterRetire, render, renderWho, sentText } from "../pi/render.mjs";
 import { Bridge } from "./bridge.mjs";
 import { Records } from "./records.mjs";
@@ -54,7 +54,7 @@ export function apply(ctx, config) {
 		for (const k of Object.keys(e)) if (k.startsWith("PIGGERY_") && k !== "PIGGERY_DISABLED") delete e[k];
 	}
 	const worker = proc.worker;
-	const sockPath = join(homedir(), ".piggery", "piggery.sock");
+	const sockPath = () => daemonAddress();
 	const parts = new Map(); // agent id -> Part
 	const log = (msg) => console.error(msg);
 
@@ -205,7 +205,7 @@ export function apply(ctx, config) {
 
 		startClient(auth) {
 			const cl = new Client({
-				path: sockPath,
+				path: sockPath(),
 				auth,
 				onPush: (f) => {
 					if (f.event === "wake") this.turns.wake();
@@ -322,7 +322,7 @@ export function apply(ctx, config) {
 		async ensureConnected() {
 			if (this.stale) throw new Error("this dsh session no longer drives a piggery participant");
 			if (this.client?.ready) return;
-			if (!existsSync(sockPath)) await startDaemon();
+			if (!existsSync(sockPath())) await startDaemon();
 			this.client?.stop();
 			this.startClient(this.envAuth ?? this.auth);
 			for (let i = 0; i < 100 && !this.client?.ready && !this.stale; i++) await sleep(100);
@@ -418,7 +418,7 @@ export function apply(ctx, config) {
 			parts.set(id, part);
 			part.start();
 		}
-		if (existsSync(sockPath)) await Promise.race([parts.get(id).identified, sleep(1500)]);
+		if (existsSync(sockPath())) await Promise.race([parts.get(id).identified, sleep(1500)]);
 	};
 
 	// A failure here must never fail the agent's creation.
@@ -565,7 +565,6 @@ async function startDaemon() {
 	const out = openSync(logFile, "a", 0o600);
 	const from = fstatSync(out).size;
 	let exited = false; // serve ended before its socket appeared: it could not start
-	const sock = join(dir, "piggery.sock");
 	await new Promise((resolve, reject) => {
 		const d = spawn("piggery", ["serve"], { detached: true, stdio: ["ignore", out, out] });
 		d.on("error", (e) => reject(new Error(e.code === "ENOENT" ? "the piggery binary is not on PATH (see https://github.com/sting8k/piggery/blob/main/docs/guide.md)" : e.message)));
@@ -575,8 +574,8 @@ async function startDaemon() {
 			resolve();
 		});
 	}).finally(() => closeSync(out));
-	for (let i = 0; i < 50 && !existsSync(sock) && !exited; i++) await sleep(100);
-	if (existsSync(sock)) return;
+	for (let i = 0; i < 50 && !existsSync(daemonAddress()) && !exited; i++) await sleep(100);
+	if (existsSync(daemonAddress())) return;
 	// Its reason is the last line it wrote to the log (e.g. a bad config.yaml).
 	const lines = readFileSync(logFile).subarray(from).toString("utf8").trim().split("\n");
 	const why = (lines[lines.length - 1] ?? "").replace(/^piggery serve: /, "").trim() || "piggery serve exited";

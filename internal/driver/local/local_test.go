@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"slices"
@@ -44,6 +43,8 @@ func TestHelperProcess(t *testing.T) {
 		ompHelper(mode)
 	}
 	switch mode {
+	case "sleep":
+		time.Sleep(time.Hour)
 	case "replay":
 		var leaked []string
 		for _, kv := range os.Environ() {
@@ -52,7 +53,7 @@ func TestHelperProcess(t *testing.T) {
 				leaked = append(leaked, kv)
 			}
 		}
-		emit(map[string]any{"type": "probe_env", "id": os.Getenv("PIGGERY_ID"), "token": os.Getenv("PIGGERY_TOKEN"), "run": os.Getenv("PIGGERY_RUN_ID"), "leaked": leaked, "args": os.Args,
+		emit(map[string]any{"type": "probe_env", "id": os.Getenv("PIGGERY_ID"), "pid": os.Getpid(), "token": os.Getenv("PIGGERY_TOKEN"), "run": os.Getenv("PIGGERY_RUN_ID"), "leaked": leaked, "args": os.Args,
 			"agent_dir": os.Getenv("PI_CODING_AGENT_DIR")})
 		b, err := os.ReadFile(os.Getenv("PGDRV_FIXTURE"))
 		if err != nil {
@@ -106,8 +107,8 @@ func TestHelperProcess(t *testing.T) {
 	case "polite":
 		term := make(chan os.Signal, 1)
 		signal.Notify(term, syscall.SIGTERM)
-		own := exec.Command("sleep", "60")
-		own.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		own := sleeper()
+		isolate(own)
 		if err := own.Start(); err != nil {
 			os.Exit(3)
 		}
@@ -116,12 +117,12 @@ func TestHelperProcess(t *testing.T) {
 		os.Exit(0)
 	case "stubborn":
 		signal.Ignore(syscall.SIGTERM)
-		child := exec.Command("sleep", "60")
+		child := sleeper()
 		if err := child.Start(); err != nil {
 			os.Exit(3)
 		}
-		own := exec.Command("sleep", "60")
-		own.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		own := sleeper()
+		isolate(own)
 		if err := own.Start(); err != nil {
 			os.Exit(3)
 		}
@@ -151,7 +152,7 @@ func newDriver(t *testing.T, mode string, opts Options) (*Driver, string) {
 	}
 	t.Setenv("PGDRV_FIXTURE", abs)
 	t.Setenv("PIGGERY_DISABLED", "1") // must not reach the worker
-	t.Setenv("HOME", t.TempDir())     // no human pi setup: the worker agent dir is built from nothing
+	setHome(t, t.TempDir())           // no human pi setup: the worker agent dir is built from nothing
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	return New(dir, opts), dir
 }
@@ -268,11 +269,11 @@ func expectGone(t *testing.T, child map[string]any, what string) {
 	for _, k := range []string{"pid", "own"} {
 		pid := int(child[k].(float64))
 		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
-			if err := syscall.Kill(pid, 0); errors.Is(err, syscall.ESRCH) {
+			if !procAlive(pid) {
 				break
 			}
 			if time.Now().After(deadline) {
-				syscall.Kill(pid, syscall.SIGKILL)
+				killPID(pid)
 				t.Fatalf("grandchild %d (%s) survived %s", pid, k, what)
 			}
 		}
@@ -282,7 +283,7 @@ func expectGone(t *testing.T, child map[string]any, what string) {
 func TestInspectAndKillVerified(t *testing.T) {
 	d, dir := newDriver(t, "replay", Options{TermWait: 2 * time.Second})
 	var signals []syscall.Signal
-	d.kill = func(pid int, sig syscall.Signal) error { signals = append(signals, sig); return syscall.Kill(pid, sig) }
+	d.kill = func(pid int, sig syscall.Signal) error { signals = append(signals, sig); return newKill()(pid, sig) }
 	ctx := context.Background()
 	proc, err := d.Start(ctx, core.Spec{ParticipantID: "p4", RunID: "r4", Token: "tok", Cwd: dir, HarnessRef: "sess-4"})
 	if err != nil {
@@ -307,8 +308,13 @@ func TestInspectAndKillVerified(t *testing.T) {
 	}
 
 	ex, err := d.KillVerified(ctx, proc)
-	if err != nil || ex.Signal != "SIGTERM" || !slices.Equal(signals, []syscall.Signal{syscall.SIGTERM}) {
+	switch {
+	case err != nil:
 		t.Fatalf("kill verified = %+v, %v, signals %v", ex, err, signals)
+	case hasTerm && (ex.Signal != "SIGTERM" || !slices.Equal(signals, []syscall.Signal{syscall.SIGTERM})):
+		t.Fatalf("kill verified = %+v, signals %v; want SIGTERM alone", ex, signals)
+	case !hasTerm && (ex.Signal != "SIGKILL" || len(signals) == 0 || slices.ContainsFunc(signals, func(s syscall.Signal) bool { return s != syscall.SIGKILL })):
+		t.Fatalf("kill verified = %+v, signals %v; want SIGKILL alone (Windows has no SIGTERM)", ex, signals)
 	}
 	if st, err := d.Inspect(ctx, proc); err != nil || st != core.ProcDead {
 		t.Fatalf("inspect killed worker = %q, %v; want dead", st, err)
@@ -415,6 +421,9 @@ func TestAbortAndSetModel(t *testing.T) {
 // Kill asks with SIGTERM: a worker that exits on it returns at once, well before the grace, with
 // its own exit (not SIGKILL's), and what it left behind is swept.
 func TestKillAsksBeforeForcing(t *testing.T) {
+	if !hasTerm {
+		t.Skip("Windows has no SIGTERM: a kill there is the job's terminate, nothing to ask first")
+	}
 	d, dir := newDriver(t, "polite", Options{KillWait: time.Minute})
 	ctx := context.Background()
 	if _, err := d.Start(ctx, core.Spec{ParticipantID: "p7", RunID: "r7", Token: "tok", Cwd: dir, HarnessRef: "sess-7"}); err != nil {

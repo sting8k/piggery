@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/sting8k/piggery/internal/core"
@@ -239,20 +238,12 @@ func Run(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("reconcile: %w", err)
 	}
 
-	sock := SocketPath(cfg.Dir)
-	if err := os.Remove(sock); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	ln, err := net.Listen("unix", sock)
+	ln, err := Listen(cfg.Dir)
 	if err != nil {
 		return err
 	}
-	if err := os.Chmod(sock, 0o600); err != nil {
-		ln.Close()
-		return err
-	}
 
-	log.Info("serving", "socket", sock)
+	log.Info("serving", "socket", Address(cfg.Dir))
 
 	s.wg.Add(1)
 	go s.tick(ctx)
@@ -654,22 +645,6 @@ func errResponse(id string, err error) proto.Response {
 func (s *server) unauthorized(verb, msg string) *core.Error {
 	s.log.Warn("unauthorized", "verb", verb, "reason", msg)
 	return &core.Error{Code: core.CodeUnauthorized, Message: msg, Layer: "token"}
-}
-
-// lock takes an exclusive, non-blocking flock on path.
-func lock(path string) (func(), error) {
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
-	if err != nil {
-		return nil, err
-	}
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, fmt.Errorf("another piggery serve holds %s", path)
-		}
-		return nil, err
-	}
-	return func() { f.Close() }, nil
 }
 
 func loadOrCreateAdminToken(path string) (string, error) {

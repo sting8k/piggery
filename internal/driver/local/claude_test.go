@@ -87,12 +87,7 @@ func newClaudeDriver(t *testing.T, prof ClaudeProfile, opts ...Options) (*Driver
 	t.Helper()
 	dir := t.TempDir()
 	// Claude's flags come first: a wrapper puts the test binary's own flags before them.
-	wrapper := filepath.Join(dir, "claude")
-	script := fmt.Sprintf("#!/bin/sh\nexec %q -test.run='^TestClaudeHelperProcess$' -- \"$@\"\n", os.Args[0])
-	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	prof.Cmd = wrapper
+	prof.Cmd = useFakeHarness(t, "TestClaudeHelperProcess")
 	b, _ := json.Marshal(prof)
 	os.MkdirAll(filepath.Dir(ClaudeProfilePath(dir)), 0o700)
 	if err := os.WriteFile(ClaudeProfilePath(dir), b, 0o600); err != nil {
@@ -129,7 +124,7 @@ func probeIn(t *testing.T, d *Driver, pid string) []map[string]any {
 // and no priority, whose command_lifecycle completed ends that batch once. Tail keeps stdout.
 func TestClaudeStart(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{"mine":{"command":"m"},"old":{"command":"o"}},
 		"projects":{"/x":{"mcpServers":{"proj":{"command":"p"}}}}}`), 0o600)
 	ended := make(chan string, 4)
@@ -189,7 +184,7 @@ func TestClaudeStart(t *testing.T) {
 	if env["agent_view"] != "1" || env["id"] != "p1" {
 		t.Fatalf("env = %v", env)
 	}
-	if proc.Cmdline[0] != filepath.Join(dir, "claude") {
+	if filepath.Base(proc.Cmdline[0]) != filepath.Base(os.Args[0]) { // the fake claude is this test binary
 		t.Fatalf("cmdline %v", proc.Cmdline)
 	}
 

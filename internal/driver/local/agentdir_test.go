@@ -106,7 +106,7 @@ func TestBuildAgentDirFreshMachine(t *testing.T) {
 // is then the human's ~/.pi/agent, never a generated dir.
 func TestHumanAgentDirIgnoresAGeneratedDir(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	root := AgentDirRoot(filepath.Join(home, ".piggery"))
 	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(root, "p1", "r1"))
 	if got := HumanAgentDir(root); got != filepath.Join(home, ".pi", "agent") {

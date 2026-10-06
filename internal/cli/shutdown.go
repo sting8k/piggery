@@ -1,11 +1,8 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/sting8k/piggery/internal/core"
@@ -28,7 +25,7 @@ func (e *env) shutdown(args []string) error {
 		return fmt.Errorf("%w: shutdown takes no arguments", errUsage)
 	}
 	c, err := e.dial(false)
-	if errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED) {
+	if daemonDown(err) {
 		fmt.Fprintln(e.stdout, "not running")
 		return nil
 	}
@@ -53,7 +50,7 @@ func (e *env) stopDaemon(c *Client) error {
 	// The socket goes as soon as shutdown starts; the singleton lock only when the daemon has
 	// stopped its workers and closed the DB.
 	for deadline := time.Now().Add(shutdownWait); ; {
-		if free, err := lockFree(server.LockPath(e.dir)); err != nil {
+		if free, err := server.LockFree(server.LockPath(e.dir)); err != nil {
 			return err
 		} else if free {
 			break
@@ -63,8 +60,8 @@ func (e *env) stopDaemon(c *Client) error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	if _, err := os.Stat(server.SocketPath(e.dir)); err == nil {
-		return fmt.Errorf("daemon exited but left %s", server.SocketPath(e.dir))
+	if left := server.Leftover(e.dir); left != "" {
+		return fmt.Errorf("daemon exited but left %s", left)
 	}
 	return nil
 }
@@ -83,7 +80,7 @@ func (e *env) restart(args []string) error {
 	var workers []string
 	c, err := e.dial(false)
 	switch {
-	case errors.Is(err, syscall.ENOENT) || errors.Is(err, syscall.ECONNREFUSED):
+	case daemonDown(err):
 	case err != nil:
 		return err
 	default:
@@ -123,21 +120,4 @@ func (e *env) restart(args []string) error {
 	fmt.Fprintf(e.stdout, "; stopped %d worker(s): %s (start one again: piggery resume <name>)\n",
 		len(workers), strings.Join(workers, ", "))
 	return nil
-}
-
-// lockFree reports whether no daemon holds the singleton lock at path.
-func lockFree(path string) (bool, error) {
-	f, err := os.OpenFile(path, os.O_RDWR, 0)
-	if errors.Is(err, os.ErrNotExist) {
-		return true, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	defer f.Close()
-	err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-	if errors.Is(err, syscall.EWOULDBLOCK) {
-		return false, nil
-	}
-	return err == nil, err
 }

@@ -253,7 +253,7 @@ func buildAgentDirWith(src, dst, home string, bl blacklist, settings []settingsF
 		if filtered[e.Name()] {
 			continue
 		}
-		if err := os.Symlink(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+		if err := symlinkOrCopy(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
 			return err
 		}
 	}
@@ -266,7 +266,7 @@ func buildAgentDirWith(src, dst, home string, bl blacklist, settings []settingsF
 		if bl.blocked(p) || e.Name() == "piggery" { // `piggery setup pi`'s copy: the worker has its -e
 			continue
 		}
-		if err := os.Symlink(p, filepath.Join(dst, "extensions", e.Name())); err != nil {
+		if err := symlinkOrCopy(p, filepath.Join(dst, "extensions", e.Name())); err != nil {
 			return err
 		}
 	}

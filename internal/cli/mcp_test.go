@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -36,7 +37,7 @@ type fakeDaemon struct {
 
 func startFakeDaemon(t *testing.T, dir string, answer func(string, json.RawMessage) any) *fakeDaemon {
 	t.Helper()
-	ln, err := net.Listen("unix", server.SocketPath(dir))
+	ln, err := server.Listen(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +415,12 @@ func TestMCPCodexWakeQueues(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(dir) })
 	args := filepath.Join(dir, "args")
 	fake := filepath.Join(dir, "codex")
-	os.WriteFile(fake, []byte("#!/bin/sh\necho \"$@\" > "+args+"\n"), 0o755)
+	if runtime.GOOS == "windows" {
+		fake += ".cmd"
+		os.WriteFile(fake, []byte("@echo %* > \""+args+"\"\r\n"), 0o755)
+	} else {
+		os.WriteFile(fake, []byte("#!/bin/sh\necho \"$@\" > "+args+"\n"), 0o755)
+	}
 	old := codexBin
 	codexBin = func() string { return fake }
 	t.Cleanup(func() { codexBin = old })

@@ -5,11 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -28,7 +26,7 @@ func NotifyHooks(dir string) (files []string, legacy bool) {
 	}
 	entries, _ := os.ReadDir(NotifyHooksDir(dir))
 	for _, e := range entries {
-		if fi, err := os.Stat(filepath.Join(NotifyHooksDir(dir), e.Name())); err == nil && fi.Mode().IsRegular() && fi.Mode()&0o111 != 0 {
+		if fi, err := os.Stat(filepath.Join(NotifyHooksDir(dir), e.Name())); err == nil && hookRunnable(fi) {
 			files = append(files, filepath.Join(NotifyHooksDir(dir), e.Name()))
 		}
 	}
@@ -42,6 +40,7 @@ func NotifyHooks(dir string) (files []string, legacy bool) {
 // body); nothing else depends on it.
 func (s *server) notifyHook(messageID string) {
 	files, _ := NotifyHooks(s.dir)
+	s.warnSkippedHooks()
 	if len(files) == 0 {
 		return
 	}
@@ -62,17 +61,28 @@ func (s *server) notifyHook(messageID string) {
 				defer wg.Done()
 				ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
 				defer cancel()
-				cmd := exec.CommandContext(ctx, path)
-				cmd.Stdin = bytes.NewReader(line)
-				// Own process group, so a timeout kills whatever the hook started too.
-				cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-				cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-				cmd.WaitDelay = time.Second
-				if err := cmd.Run(); err != nil {
+				if err := s.runHook(ctx, path, line); err != nil {
 					s.log.Error("notify hook", "message", messageID, "hook", filepath.Base(path), "err", err, "timed_out", ctx.Err() != nil)
 				}
 			}()
 		}
 		wg.Wait()
 	}()
+}
+
+// runHook runs one hook with line on its stdin until it ends or ctx does; the timeout ends the hook
+// and what it started (hookKill).
+func (s *server) runHook(ctx context.Context, path string, line []byte) error {
+	cmd := hookCommand(ctx, path)
+	cmd.Stdin = bytes.NewReader(line)
+	attach, release := hookKill(cmd)
+	cmd.WaitDelay = time.Second
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	defer release()
+	if err := attach(); err != nil {
+		s.log.Warn("notify hook: its processes are not tracked", "hook", filepath.Base(path), "err", err)
+	}
+	return cmd.Wait()
 }

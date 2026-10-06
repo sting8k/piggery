@@ -18,7 +18,7 @@ import (
 // participants (one host each), a tool call acts as the thread its _meta.sessionId names, and a call
 // without it is refused instead of acting as another thread (issue #4).
 func TestSharedAppServerThreads(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pg") // short: unix socket paths are limited on macOS
+	dir, err := os.MkdirTemp(shortTmp(), "pg") // short: unix socket paths are limited on macOS
 	if err != nil {
 		t.Fatal(err)
 	}

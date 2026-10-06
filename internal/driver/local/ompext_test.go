@@ -113,7 +113,7 @@ func TestOmpEntryImportsMatchShared(t *testing.T) {
 // over the default, and one under the per-run root (a worker's) is ignored.
 func TestOmpHumanAgentDir(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PI_CONFIG_DIR", "")
 	t.Setenv("PI_PROFILE", "")
 	t.Setenv("OMP_PROFILE", "")

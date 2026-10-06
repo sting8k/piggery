@@ -15,7 +15,7 @@ func TestWriteProfileKeepsExistingWithoutForce(t *testing.T) {
 	if ok, err := writeJSON(path, local.DefaultProfile("/x/extensions/pi/index.ts"), false); err != nil || !ok {
 		t.Fatalf("first write: %v %v", ok, err)
 	}
-	if st, _ := os.Stat(path); st.Mode().Perm() != 0o600 {
+	if st, _ := os.Stat(path); !permIs(st.Mode().Perm(), 0o600) {
 		t.Fatalf("profile mode %v", st.Mode().Perm())
 	}
 	if err := os.WriteFile(path, []byte(`{"cmd":"mine"}`), 0o600); err != nil {

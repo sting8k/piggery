@@ -25,7 +25,7 @@ func TestDailyUpdateCheck(t *testing.T) {
 		fmt.Fprint(w, `{"tag_name":"v9.9.9"}`)
 	}))
 	defer api.Close()
-	dir, err := os.MkdirTemp("/tmp", "pg") // short: unix socket paths are limited on macOS
+	dir, err := os.MkdirTemp(shortTmp(), "pg") // short: unix socket paths are limited on macOS
 	if err != nil {
 		t.Fatal(err)
 	}

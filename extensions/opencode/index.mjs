@@ -24,7 +24,7 @@ import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, 
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Turns } from "../pi/adapter.mjs";
-import { Client } from "../pi/client.mjs";
+import { Client, daemonAddress } from "../pi/client.mjs";
 import { afterRetire, render, renderWho, sentText } from "../pi/render.mjs";
 import { Bridge, NUDGE } from "./bridge.mjs";
 import { Records } from "./records.mjs";
@@ -74,7 +74,6 @@ class Host {
 		this.directory = input.directory;
 		this.sessions = options.sessions ?? join(homedir(), ".piggery", "sessions", "opencode"); // where a TUI session keeps its records, <id>/records.jsonl
 		this.worker = proc.worker;
-		this.sockPath = join(homedir(), ".piggery", "piggery.sock");
 		this.info = new Map(); // session id -> opencode's session info, from session.created
 		this.roots = new Map(); // session id -> Promise<Part | null>
 		this.models = new Map(); // session id -> the model its latest user message named
@@ -170,7 +169,7 @@ class Host {
 		if (w && (w.session ? sid !== w.session : info.metadata?.piggery_participant !== w.auth.id)) return null;
 		const part = new Part(this, sid, info);
 		part.start();
-		if (existsSync(this.sockPath)) await Promise.race([part.identified, sleep(1500)]);
+		if (existsSync(daemonAddress())) await Promise.race([part.identified, sleep(1500)]);
 		return part;
 	}
 
@@ -326,7 +325,7 @@ class Part {
 
 	startClient(auth) {
 		const cl = new Client({
-			path: this.host.sockPath,
+			path: daemonAddress(),
 			auth,
 			onPush: (f) => {
 				if (f.event === "wake") this.turns.wake();
@@ -443,7 +442,7 @@ class Part {
 	async ensureConnected() {
 		if (this.stale) throw new Error("this opencode session no longer drives a piggery participant");
 		if (this.client?.ready) return;
-		if (!existsSync(this.host.sockPath)) await startDaemon(this.host.sockPath);
+		if (!existsSync(daemonAddress())) await startDaemon();
 		this.client?.stop();
 		this.startClient(this.envAuth ?? this.auth);
 		for (let i = 0; i < 100 && !this.client?.ready && !this.stale; i++) await sleep(100);
@@ -515,8 +514,8 @@ const TOOL_BODIES = {
 	},
 };
 
-async function startDaemon(sock) {
-	const dir = dirname(sock);
+async function startDaemon() {
+	const dir = join(homedir(), ".piggery");
 	mkdirSync(dir, { recursive: true, mode: 0o700 });
 	// Like the CLI autostart: append to serve.log (0600), own session (detached = setsid), released.
 	const logFile = join(dir, "serve.log");
@@ -532,8 +531,8 @@ async function startDaemon(sock) {
 			resolve();
 		});
 	}).finally(() => closeSync(out));
-	for (let i = 0; i < 50 && !existsSync(sock) && !exited; i++) await sleep(100);
-	if (existsSync(sock)) return;
+	for (let i = 0; i < 50 && !existsSync(daemonAddress()) && !exited; i++) await sleep(100);
+	if (existsSync(daemonAddress())) return;
 	// Its reason is the last line it wrote to the log (e.g. a bad config.yaml).
 	const lines = readFileSync(logFile).subarray(from).toString("utf8").trim().split("\n");
 	const why = (lines[lines.length - 1] ?? "").replace(/^piggery serve: /, "").trim() || "piggery serve exited";

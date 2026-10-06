@@ -133,8 +133,7 @@ func firstNonEmpty(s ...string) string {
 func writeClaudePlugin(root, self string) error {
 	hooks := map[string]any{}
 	for _, ev := range claudeSessionHooks {
-		m := map[string]any{"hooks": []any{map[string]any{"type": "command",
-			"command": local.ShellQuote(self) + " hook claude " + ev, "timeout": 10}}}
+		m := map[string]any{"hooks": []any{claudeHookHandler(self, ev)}}
 		switch ev {
 		case "PreToolUse":
 			m["matcher"] = "mcp__piggery__.*"
@@ -170,7 +169,10 @@ func hooksRunSelf(dir, self string) bool {
 	}
 	var f struct {
 		Hooks map[string][]struct {
-			Hooks []struct{ Command string } `json:"hooks"`
+			Hooks []struct {
+				Command string
+				Args    []string
+			} `json:"hooks"`
 		} `json:"hooks"`
 	}
 	if json.Unmarshal(b, &f) != nil || len(f.Hooks) == 0 {
@@ -179,7 +181,7 @@ func hooksRunSelf(dir, self string) bool {
 	for _, groups := range f.Hooks {
 		for _, g := range groups {
 			for _, h := range g.Hooks {
-				if !strings.HasPrefix(h.Command, local.ShellQuote(self)+" hook claude ") {
+				if !claudeHookRunsSelf(h.Command, h.Args, self) {
 					return false
 				}
 			}

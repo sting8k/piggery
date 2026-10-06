@@ -11,13 +11,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -61,8 +59,8 @@ func TestOpencodeHelperProcess(t *testing.T) {
 	}
 	logLine(map[string]any{"env": env, "args": os.Args})
 	// a tool's shell: its own process group, so a signal to serve's group misses it
-	child := exec.Command("sleep", "300")
-	child.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	child := sleeper()
+	isolate(child)
 	child.Start()
 	os.WriteFile(os.Getenv("PGDRV_CHILD"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
 
@@ -113,7 +111,7 @@ func TestOpencodeHelperProcess(t *testing.T) {
 			io.WriteString(w, `{"id":"`+id+`","model":{"id":"glm-5.3-flash","providerID":"hp","variant":"default"}}`)
 		case rest == "abort":
 			if pid, err := strconv.Atoi(strings.TrimSpace(readFile(os.Getenv("PGDRV_CHILD")))); err == nil {
-				syscall.Kill(pid, syscall.SIGKILL)
+				killPID(pid)
 			}
 			io.WriteString(w, "true")
 		case rest == "prompt_async":
@@ -198,12 +196,7 @@ type ocEnv struct {
 func newOpencodeDriver(t *testing.T, prof OpencodeProfile, events, oldSID string, opts ...Options) ocEnv {
 	t.Helper()
 	dir := t.TempDir()
-	wrapper := filepath.Join(t.TempDir(), "opencode")
-	script := fmt.Sprintf("#!/bin/sh\nexec %q -test.run='^TestOpencodeHelperProcess$' -- \"$@\"\n", os.Args[0])
-	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	prof.Cmd = wrapper
+	prof.Cmd = useFakeHarness(t, "TestOpencodeHelperProcess")
 	b, _ := json.Marshal(prof)
 	os.MkdirAll(filepath.Dir(OpencodeProfilePath(dir)), 0o700)
 	if err := os.WriteFile(OpencodeProfilePath(dir), b, 0o600); err != nil {
@@ -320,7 +313,7 @@ func TestOpencodeStartStop(t *testing.T) {
 	}
 	waitRecord(t, e.d, "p1", "agent_end")
 	childPID, _ := strconv.Atoi(readFile(e.child))
-	if syscall.Kill(childPID, 0) != nil {
+	if !procAlive(childPID) {
 		t.Fatal("the fake tool shell is gone before the stop")
 	}
 	t0 := time.Now()
@@ -335,7 +328,7 @@ func TestOpencodeStartStop(t *testing.T) {
 	if got := e.requests(t, "POST /session/ses_fake1/abort"); len(got) != 1 {
 		t.Errorf("abort requests at stop: %d", len(got))
 	}
-	waitFor(t, "the tool shell to be gone", func() bool { return syscall.Kill(childPID, 0) != nil })
+	waitFor(t, "the tool shell to be gone", func() bool { return !procAlive(childPID) })
 }
 
 // Resume continues the session core names: the plugin is told which (PIGGERY_OPENCODE_SESSION), no

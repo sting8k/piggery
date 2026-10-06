@@ -1,11 +1,29 @@
 // JSON-lines client for the piggery daemon socket. No pi imports.
 // Responses carry the request `id`; server pushes carry `event` and no `id`.
+import { readFileSync } from "node:fs";
 import net from "node:net";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
+/**
+ * Where the piggery daemon listens: the unix socket in ~/.piggery, or on Windows the named pipe
+ * whose name the daemon and `piggery setup` write, one line, to ~/.piggery/piggery.pipe ("" until
+ * one has: no daemon yet). Read it again for every use: it appears when the daemon starts.
+ */
+export function daemonAddress() {
+	const dir = join(homedir(), ".piggery");
+	if (process.platform !== "win32") return join(dir, "piggery.sock");
+	try {
+		return readFileSync(join(dir, "piggery.pipe"), "utf8").trim();
+	} catch {
+		return "";
+	}
+}
 
 export class Client {
 	/**
 	 * @param {object} o
-	 * @param {string} o.path unix socket path
+	 * @param {string} o.path the daemon's address (daemonAddress())
 	 * @param {{id: string, token: string}} o.auth
 	 * @param {(frame: object) => void} o.onPush
 	 * @param {() => Promise<void>} o.onConnect runs first on every connection (identify); calls made

@@ -5,12 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -25,7 +23,7 @@ import (
 // startServer runs a daemon in a short temp dir (unix socket paths are length-limited on macOS).
 func startServer(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("/tmp", "pg")
+	dir, err := os.MkdirTemp(shortTmp(), "pg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +73,12 @@ func TestServerAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range []string{server.AdminTokenPath(dir), server.SocketPath(dir)} {
-		if fi, err := os.Stat(p); err != nil || fi.Mode().Perm() != 0o600 {
+	paths := []string{server.AdminTokenPath(dir)}
+	if sock := server.Leftover(dir); sock != "" { // the socket file (a pipe is no file)
+		paths = append(paths, sock)
+	}
+	for _, p := range paths {
+		if fi, err := os.Stat(p); err != nil || !permIs(fi.Mode().Perm(), 0o600) {
 			t.Fatalf("%s: want mode 0600, got %v %v", p, fi.Mode(), err)
 		}
 	}
@@ -89,7 +91,7 @@ func TestServerAuth(t *testing.T) {
 	team, alice, bob := p2pTeam(t, dir)
 
 	// A wrong participant token is unauthorized even when a valid admin token rides along.
-	raw, err := net.Dial("unix", server.SocketPath(dir))
+	raw, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +178,7 @@ func TestIdentifiedConnectionWakeAndGone(t *testing.T) {
 	dir := startServer(t)
 	_, alice, bob := p2pTeam(t, dir)
 
-	raw, err := net.Dial("unix", server.SocketPath(dir))
+	raw, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +230,7 @@ type rawConn struct {
 
 func rawDial(t *testing.T, dir string, j core.JoinResult) *rawConn {
 	t.Helper()
-	c, err := net.Dial("unix", server.SocketPath(dir))
+	c, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +268,7 @@ func (r *rawConn) call(verb string, args any) proto.Response {
 func TestTeamDownPushesRetire(t *testing.T) {
 	dir := startServer(t)
 	team, _, bob := p2pTeam(t, dir)
-	raw, err := net.Dial("unix", server.SocketPath(dir))
+	raw, err := server.Dial(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +306,7 @@ func TestGateCloseRetiresTheOthers(t *testing.T) {
 	dir := startServer(t)
 	_, alice, bob := p2pTeam(t, dir) // alice joined first: the gate
 	open := func(j core.JoinResult) (net.Conn, *json.Decoder) {
-		raw, err := net.Dial("unix", server.SocketPath(dir))
+		raw, err := server.Dial(dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -394,7 +396,7 @@ func TestSupersededConnectionIsStale(t *testing.T) {
 // (driver OnExit -> core.ProcessExited) without anyone calling stop.
 func TestSpawnedWorkerExitEndsGone(t *testing.T) {
 	dir := startServer(t)
-	prof := []byte(`{"cmd": "/bin/sh", "args": ["-c", "sleep 0.3", "sh"]}`)
+	prof := workerProfile(t, "brief")
 	if err := os.MkdirAll(filepath.Join(dir, "harness"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +453,7 @@ func runServer(t *testing.T, dir string) (stop func()) {
 // so the next start has nothing to reconcile for them. The stop is `piggery -a shutdown`: it returns
 // once the daemon is gone and no worker is left.
 func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pg")
+	dir, err := os.MkdirTemp(shortTmp(), "pg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -459,7 +461,7 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dir, "harness"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	prof := []byte(`{"cmd": "/bin/sh", "args": ["-c", "cat >/dev/null", "sh"]}`) // exits when stdin closes
+	prof := workerProfile(t, "stdin") // exits when stdin closes
 	if err := os.WriteFile(filepath.Join(dir, "harness", "pi.json"), prof, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -476,8 +478,8 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 	if code := cli.Main(dir, []string{"-a", "shutdown"}, &out, &errOut); code != 0 {
 		t.Fatalf("shutdown: exit %d: %s%s", code, out.String(), errOut.String())
 	}
-	if _, err := os.Stat(server.SocketPath(dir)); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("socket after stop returned: %v", err)
+	if left := server.Leftover(dir); left != "" {
+		t.Fatalf("socket after stop returned: %s", left)
 	}
 	stop() // Run has returned; this collects its result
 	db, err := store.Open(server.DBPath(dir))
@@ -490,8 +492,8 @@ func TestGracefulStopEndsWorkersAndRecordsExits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := syscall.Kill(pid, 0); !errors.Is(err, syscall.ESRCH) {
-		t.Fatalf("worker pid %d after stop: %v; want no such process", pid, err)
+	if !procGone(pid) {
+		t.Fatalf("worker pid %d after stop: still there; want no such process", pid)
 	}
 
 	stop = runServer(t, dir)
@@ -544,21 +546,10 @@ func TestNotifyHooksRunInParallel(t *testing.T) {
 	}
 	leaveTeam("sess-1") // before any hook exists: runs nothing
 	out, slowDone, legacyOut := filepath.Join(dir, "fast.out"), filepath.Join(dir, "slow.done"), filepath.Join(dir, "legacy.out")
-	put := func(path, text string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(text), 0o700); err != nil {
-			t.Fatal(err)
-		}
+	writeNotifyHooks(t, server.NotifyHooksDir(dir), slowDone, out, legacyOut)
+	if err := os.WriteFile(filepath.Join(dir, "hooks", "notify"), []byte("#!/bin/sh\ntouch '"+legacyOut+"'\n"), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	hooks := server.NotifyHooksDir(dir)
-	put(filepath.Join(hooks, "a-slow"), "#!/bin/sh\nsleep 30\ntouch '"+slowDone+"'\n")
-	put(filepath.Join(hooks, "b-fast"), "#!/bin/sh\ncat >> '"+out+"'\n")
-	put(filepath.Join(hooks, "c-not-executable"), "#!/bin/sh\ntouch '"+legacyOut+"'\n")
-	os.Chmod(filepath.Join(hooks, "c-not-executable"), 0o600)
-	put(filepath.Join(dir, "hooks", "notify"), "#!/bin/sh\ntouch '"+legacyOut+"'\n")
 	leaveTeam("sess-2")
 	var b []byte
 	start := time.Now()
@@ -718,9 +709,7 @@ func TestNestedHarnessCannotSpeakForTheWorker(t *testing.T) {
 	out := t.TempDir()
 	t.Setenv("PGTEST_DIR", dir)
 	t.Setenv("PGTEST_OUT", out)
-	cl := fmt.Sprintf("%q -test.run=^TestWorkerPeerClient$", os.Args[0])
-	script := fmt.Sprintf(`PGTEST_TAG=direct %s; sh -c 'PGTEST_TAG=nested %s; :'; read x`, cl, cl)
-	prof, _ := json.Marshal(map[string]any{"cmd": "/bin/sh", "args": []string{"-c", script, "sh"}})
+	prof := workerProfile(t, "nested")
 	if err := os.MkdirAll(filepath.Join(dir, "harness"), 0o700); err != nil {
 		t.Fatal(err)
 	}

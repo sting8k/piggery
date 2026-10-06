@@ -14,7 +14,7 @@ import { Type } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Turns } from "./adapter.mjs";
 import { afterRetire, render, renderWho, sentText } from "./render.mjs";
-import { Client } from "./client.mjs";
+import { Client, daemonAddress } from "./client.mjs";
 
 // The built-in tools, defined once for every adapter (tools.json, next to this file); {tool:X}
 // in a text is X's name here.
@@ -66,7 +66,7 @@ export default function piggery(pi: ExtensionAPI) {
 	// A spawned worker identifies as the run the daemon created for its process (processes row,
 	// tail log), not as a new run.
 	if (envAuth && workerRun) proc.runId ??= workerRun;
-	const sockPath = join(homedir(), ".piggery", "piggery.sock");
+	const sockPath = () => daemonAddress();
 
 	let ctx: ExtensionContext | undefined;
 	let roleCard = "";
@@ -268,7 +268,7 @@ export default function piggery(pi: ExtensionAPI) {
 
 	const startClient = (auth: { id: string; token: string } | undefined) => {
 		const cl: Client = new Client({
-			path: sockPath,
+			path: sockPath(),
 			auth,
 			onPush: (f: any) => {
 				if (f.event === "wake") turns.wake();
@@ -312,7 +312,7 @@ export default function piggery(pi: ExtensionAPI) {
 	const ensureConnected = async () => {
 		if (proc.stale) throw new Error("this pi session no longer drives a piggery participant");
 		if (client?.ready) return;
-		if (!existsSync(sockPath)) await startDaemon();
+		if (!existsSync(sockPath())) await startDaemon();
 		client?.stop();
 		startClient(envAuth ?? proc.auth);
 		for (let i = 0; i < 100 && !client?.ready && !proc.stale; i++) await new Promise((r) => setTimeout(r, 100));
@@ -338,8 +338,8 @@ export default function piggery(pi: ExtensionAPI) {
 				resolve();
 			});
 		}).finally(() => closeSync(out));
-		for (let i = 0; i < 50 && !existsSync(sockPath) && !exited; i++) await new Promise((r) => setTimeout(r, 100));
-		if (existsSync(sockPath)) return;
+		for (let i = 0; i < 50 && !existsSync(sockPath()) && !exited; i++) await new Promise((r) => setTimeout(r, 100));
+		if (existsSync(sockPath())) return;
 		// Its reason is the last line it wrote to the log (e.g. a bad config.yaml).
 		const lines = readFileSync(log).subarray(from).toString("utf8").trim().split("\n");
 		const why = (lines[lines.length - 1] ?? "").replace(/^piggery serve: /, "").trim() || "piggery serve exited";

@@ -135,7 +135,7 @@ func TestPsJSONMatchesTop(t *testing.T) {
 // document with the version the plugin checks, and every row top's list selects is in it with the
 // same id, its actions as top decides them, and its Overview.
 func TestPsViewCarriesWhatTopSelects(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pg") // short: unix socket paths are limited on macOS
+	dir, err := os.MkdirTemp(shortTmp(), "pg") // short: unix socket paths are limited on macOS
 	if err != nil {
 		t.Fatal(err)
 	}
