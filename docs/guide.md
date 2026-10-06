@@ -139,8 +139,10 @@ unacked mail of agents that are gone, workers without a process) and exits 1 whe
 **Notifications.** piggery tells you what only it knows: when the mail flow of a team needs you.
 `piggery setup notify add desktop`, `add herdr` or `add ntfy:<topic>` writes a hook for you into
 `~/.piggery/hooks/notify.d/` (it needs `jq`; `piggery setup notify` lists what is there and what each
-target lacks; `remove <target>` takes one out; it works from the next notice, no restart). Or write
-your own: each executable file in `~/.piggery/hooks/notify.d/` is run, all of them in parallel, with
+target lacks; `remove <target>` takes one out; it works from the next notice, no restart). On
+Windows `desktop` (a toast) and `ntfy:<topic>` are PowerShell scripts that need nothing installed.
+Or write your own: each executable file in `~/.piggery/hooks/notify.d/` (on Windows a `.ps1`,
+`.cmd`, `.bat` or `.exe` file) is run, all of them in parallel, with
 one JSON line on stdin: `id, kind, team, gate, dir, body, created_at`. `gate` is your team's gate (your session; for a solo, itself),
 `dir` the team's root (a solo's directory) and `body` one short sentence. `kind` is one of:
 
@@ -362,7 +364,8 @@ Remove a column to hide it; the name is always shown.
   own error.
 - **Upgrade.** `piggery update` installs the latest release in place of the running binary (its
   checksum is verified; `--check` only prints versions; a build from source needs `--force`), or run
-  the install script again. The daemon restarts at the next command; before a database upgrade it
+  the install script again. On Windows the binary it replaced stays beside the new one as
+  `piggery.exe.old` until the next upgrade; delete it when you like. The daemon restarts at the next command; before a database upgrade it
   copies the database to `~/.piggery/backups/` (the three newest are kept). `piggery restart`
   restarts it now.
   Once a day the daemon checks for a newer release: `top`, `ps --view` and `setup` then say `vX

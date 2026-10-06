@@ -52,11 +52,18 @@ curl -fsSL https://raw.githubusercontent.com/sting8k/piggery/main/install.sh | s
 piggery setup pi       # and/or: claude, codex, omp, dsh, opencode
 ```
 
-The script picks the build for your OS and CPU (Linux or macOS, amd64 or arm64), checks it
-against the release's `checksums.txt`, and puts it in `~/.local/bin`.
+On Windows (experimental), in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/sting8k/piggery/main/install.ps1 | iex
+```
+
+The script picks the build for your OS and CPU (Linux, macOS or Windows; amd64 or arm64), checks it
+against the release's `checksums.txt`, and puts it in `~/.local/bin` (`%USERPROFILE%\.local\bin`
+on Windows).
 
 - Another directory: `PIGGERY_INSTALL_DIR=...`. A given release: `PIGGERY_VERSION=v0.3.0`.
-- By hand: download `piggery-<os>-<arch>` from the
+- By hand: download `piggery-<os>-<arch>` (`piggery-windows-<arch>.exe` on Windows) from the
   [latest release](https://github.com/sting8k/piggery/releases/latest), `chmod +x` it, put it on
   your PATH.
 - With Go 1.26+: `go install github.com/sting8k/piggery/cmd/piggery@latest`.

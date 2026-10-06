@@ -12,7 +12,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 |---|---|
 | `setup [pi\|claude\|codex\|omp\|dsh\|opencode\|paseo]` | Add piggery to a harness (alone: write missing profiles, templates and config keys (the daemon does the same at start), and show where each harness stands) |
 | `setup --outdated` | Update every installed integration that is outdated (pi, omp, dsh, opencode, claude, codex, paseo): runs `setup <harness>` for each and says what to do after (reopen Codex sessions, reload the Paseo app); not installed ones are untouched; `piggery integrations are up to date` when nothing is; exit 1 if an update failed (the others still run) |
-| `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it |
+| `setup notify [add\|remove <desktop\|herdr\|ntfy:TOPIC>] [--force]` | The notify hooks in `hooks/notify.d/`: alone, lists them and what each target needs on PATH (`jq` for all; `osascript` or `terminal-notifier`, `notify-send`, `herdr`, `curl`); `add` writes one script (mode 0700, a `# written by piggery setup notify add <target>` marker on its second line; `ntfy:<topic>` is the file `ntfy-<topic>`); `remove` deletes only a file with that marker. A file you wrote is left alone (exit 1); `add --force` replaces it. On Windows the targets are `desktop` and `ntfy:TOPIC`, written as `desktop.ps1` and `ntfy-<topic>.ps1` with the marker on the first line; they need nothing on PATH |
 | `setup remove <harness>` | Take out exactly what `setup` added; `--ext PATH` (setup pi) uses a checkout's extension |
 | `skills` | Print the guide for agents |
 | `team down <team>` | Close a team: workers stopped, nothing acked; a session that was a member goes on as a solo under its old name (`name-2` when a live solo or an open team has it) |
@@ -33,7 +33,7 @@ you (admin, read from `~/.piggery/admin.token`) and start the daemon if it is no
 | `check [--json]` | Local, no daemon, changes nothing: reads `config.yaml`, `harness/*.json`, every template and the `prompts` entries with the loaders the daemon uses when it founds a team. An error line for what they refuse, then `warning:` lines for what they skip or ignore (a prompt left out, a `to: notify` line, an old `hooks/notify`); exit 1 when any error. `--json`: `{"errors": [], "warnings": []}` |
 | `doctor` | Findings about the daemon's state; exit 1 when any |
 | `shutdown` / `restart` | Stop the daemon (workers stopped), or stop and start it again from this binary |
-| `update [--check] [--force]` | Install the latest release in place; `--force` for a build from source (`dev`, `dev-<sha>`); `--check` prints the current and latest versions and `vX available` when a newer one is out |
+| `update [--check] [--force]` | Install the latest release in place; `--force` for a build from source (`dev`, `dev-<sha>`); `--check` prints the current and latest versions and `vX available` when a newer one is out. On Windows the replaced binary is kept as `piggery.exe.old` (a running program cannot be deleted there) until the next update replaces it |
 
 `ps` and `top` show a line such as `outdated: codex (v0 < v1): piggery setup --outdated` in their header
 when a claude, codex or paseo install is outdated (`ps --json` has the same list as `outdated`).
@@ -171,6 +171,11 @@ session itself), `dir` the team's root (a solo's directory), `body` one short se
 runs over 10 seconds is killed with its child processes; a failure is a line in `serve.log` with
 the file's name and never the body. Without a hook nothing runs. `hooks/notify` (the old single
 file) is not run; `piggery check` warns about it. `setup notify` writes and lists hooks.
+
+Windows has no execute bit: a hook there is a file the daemon can run by its extension, `.exe` or
+`.com` as it is, `.cmd` or `.bat` through `cmd.exe`, `.ps1` through Windows PowerShell
+(`powershell.exe -NoProfile -ExecutionPolicy Bypass -File`; a script should read stdin as UTF-8
+bytes, as the ones `setup notify` writes do). A `.sh` file is not run, and `serve.log` says so once.
 
 | `kind` | A notice when |
 |---|---|

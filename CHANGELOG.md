@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+Windows (experimental, amd64 and arm64):
+
+- **Install and update.** Releases carry `piggery-windows-<arch>.exe`. `install.ps1` installs it
+  (`irm https://raw.githubusercontent.com/sting8k/piggery/main/install.ps1 | iex`), and `piggery
+  update` works there: the binary it replaces, which may be running, is kept beside the new one as
+  `piggery.exe.old` until the next update.
+- **`piggery setup notify add desktop` and `add ntfy:<topic>`** write PowerShell hooks on Windows (a
+  toast, a push through ntfy.sh) that need nothing installed. `herdr` has no Windows script.
+- **A harness installed with pnpm, or whose script is not run by node, starts as a worker.** The
+  `.cmd` shim of pnpm (and of npm before 7) is seen through like npm's, and a shim's script runs
+  with the interpreter the shim names (bun for omp) instead of always node.
+- **A worker's agent directory shares the human's without Developer Mode.** Where a symlink cannot
+  be made, pi's and omp's entries become junctions and hard links, not a copy of the whole
+  directory at each spawn: a worker's sessions and a login it refreshed are the human's own again.
+- **A worker that stops reading its stdin no longer hangs the daemon's write to it** (a Windows
+  pipe takes no deadline); the write is given up on after two seconds, as on Linux and macOS.
+- **`piggery setup codex` quotes piggery's path in the hook command only when it has a space** or
+  another character `cmd.exe` reads specially: a Codex that escapes a command's quotes runs none
+  that has any. Run `piggery setup codex` again if you set it up from an earlier Windows build.
+- **The Paseo view matches a Windows workspace** to the directories under it (paths were compared
+  by `/` and by case). Integration version: paseo 4; `piggery setup --outdated` updates it.
+
 ## v0.9.0 - 2026-10-06
 
 A session can call up a taskforce for one job, a team's gate stays with its founder, and `lead-peer`, `dual-lens` and `advisor` join the built-in templates.
