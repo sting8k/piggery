@@ -13,7 +13,7 @@ test("RPC names are ones Paseo accepts (one bad name fails the whole plugin)", (
   for (const name of RPC_NAMES) assert.match(name, /^[a-z][a-z0-9._-]*$/);
 });
 
-test("runPiggery always passes --no-start and says why piggery gave nothing", async () => {
+test("runPiggery always passes --no-start and says why piggery gave nothing", { skip: process.platform === "win32" && "its fake piggery is a sh script" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "piggery-paseo-"));
   const fake = (name: string, body: string) => {
     const path = join(dir, name);
@@ -54,7 +54,7 @@ test("components take text sizes and weights from the text roles only", () => {
   }
 });
 
-test("a workspace reached through a symlink matches the directory piggery recorded", async () => {
+test("a workspace reached through a symlink matches the directory piggery recorded", { skip: process.platform === "win32" && "a symlink needs a privilege on Windows, and the plugin compares paths by /" }, async () => {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "piggery-paseo-")));
   mkdirSync(join(base, "shop"));
   symlinkSync(join(base, "shop"), join(base, "link"));

@@ -49,6 +49,7 @@ test("the extension against a fake daemon", async (t) => {
 		return {};
 	};
 	const srv = net.createServer((s) => {
+		s.on("error", () => {}); // a client that has gone makes a write fail (EPIPE on a Windows pipe): not the fake's concern
 		let buf = "";
 		s.on("data", (d) => {
 			buf += d;

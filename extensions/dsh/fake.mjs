@@ -24,6 +24,7 @@ export async function fakeDaemon(home, answer) {
 	const calls = [];
 	const socks = new Set();
 	const srv = net.createServer((s) => {
+		s.on("error", () => {}); // a client that has gone makes a write fail (EPIPE on a Windows pipe): not the fake's concern
 		socks.add(s);
 		s.on("close", () => socks.delete(s));
 		let buf = "";

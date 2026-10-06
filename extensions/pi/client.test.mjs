@@ -13,6 +13,7 @@ test("a run.stale answer to any call stops the client for good", async () => {
 	let connections = 0;
 	// Identify succeeds; every later call is answered as from a superseded run.
 	const server = net.createServer((c) => {
+		c.on("error", () => {}); // a client that has gone makes a write fail (EPIPE on a Windows pipe): not the fake's concern
 		connections++;
 		let buf = "";
 		c.on("data", (d) => {
