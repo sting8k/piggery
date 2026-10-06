@@ -427,6 +427,9 @@ func TestMCPCodexWakeQueues(t *testing.T) {
 	s := &mcpServer{host: "codex:9:1", harness: "codex"}
 	s.onPush(proto.Push{Event: proto.EventWake, Ref: "thread-2"})
 	b, _ := os.ReadFile(args)
+	if runtime.GOOS == "windows" { // cmd's %* keeps the quotes the shell would have removed
+		b = []byte(strings.ReplaceAll(string(b), `"`, ""))
+	}
 	if !strings.HasPrefix(string(b), "queue --thread thread-2 --message [piggery] wake #1") {
 		t.Fatalf("codex called with %q", b)
 	}

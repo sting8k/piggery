@@ -1,6 +1,8 @@
 package view
 
 import (
+	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -15,6 +17,7 @@ import (
 // one), sleeping by creation, and a directory takes its best bucket. Contact that is not a turn (a
 // reconnect, a daemon restart) neither wakes a directory nor moves it.
 func TestGroupByDir(t *testing.T) {
+	skipSlashPaths(t)
 	now := time.UnixMilli(1_000_000_000_000)
 	ago := func(d time.Duration) int64 { return now.Add(-d).UnixMilli() }
 	h := time.Hour
@@ -82,5 +85,27 @@ func TestGroupByDir(t *testing.T) {
 	dirs, _ = order(GroupByDir(teams, closed, solos, roots, now))
 	if want := []string{"/p", "/q", "/p/sub"}; !slices.Equal(dirs[:3], want) {
 		t.Fatalf("directories %v; want the new team's /p first", dirs)
+	}
+}
+
+func skipSlashPaths(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture's paths are unix paths; TestRootsAndRelCwdFollowTheOSSeparator covers Windows ones")
+	}
+}
+
+// A root holds a cwd and a cwd is shown relative to its directory whatever the OS separator is.
+func TestRootsAndRelCwdFollowTheOSSeparator(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "a", "b")
+	if got := deepestRoot(sub, []string{filepath.Dir(root), root}); got != filepath.Clean(root) {
+		t.Fatalf("deepestRoot = %q; want %q", got, root)
+	}
+	if got := RelCwd(root, sub); got != "./a/b" {
+		t.Fatalf("RelCwd = %q; want ./a/b", got)
+	}
+	if got := deepestRoot(sub+"x", []string{sub}); got != sub+"x" {
+		t.Fatalf("deepestRoot of a sibling with the same prefix = %q; want itself", got)
 	}
 }

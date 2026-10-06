@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -61,4 +62,10 @@ func skipOnWindows(t *testing.T, why string) {
 	if runtime.GOOS == "windows" {
 		t.Skip(why)
 	}
+}
+
+// mustJSON is v as JSON (a Windows path holds backslashes).
+func mustJSON(v any) string {
+	b, _ := json.Marshal(v)
+	return string(b)
 }

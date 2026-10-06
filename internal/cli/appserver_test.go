@@ -48,7 +48,7 @@ func TestSharedAppServerThreads(t *testing.T) {
 	e := &env{dir: dir, stdout: io.Discard}
 	cwdA, cwdB := t.TempDir(), t.TempDir()
 	for _, th := range []struct{ session, cwd string }{{"thread-a", cwdA}, {"thread-b", cwdB}} {
-		e.runHook("codex", "SessionStart", strings.NewReader(`{"session_id":"`+th.session+`","source":"startup","cwd":"`+th.cwd+`"}`), io.Discard)
+		e.runHook("codex", "SessionStart", strings.NewReader(fmt.Sprintf(`{"session_id":%q,"source":"startup","cwd":%s}`, th.session, mustJSON(th.cwd))), io.Discard)
 	}
 
 	s := &mcpServer{dir: dir, host: hostID, harness: "codex", shared: true, sessions: map[string]*mcpServer{}, out: io.Discard}

@@ -2,6 +2,7 @@ package core_test
 
 import (
 	"database/sql"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -77,6 +78,12 @@ func git(t *testing.T, dir string, args ...string) {
 // A spawn's cwd must lie inside the team root, a git worktree of the repo at the root, or
 // spawn.allowed_roots, symlinks resolved; a role without can_set_cwd keeps its own. The spawn event
 // records where the worker runs.
+// js is s as a JSON string (a Windows path holds backslashes).
+func js(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 func TestSpawnCwdBounds(t *testing.T) {
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("no git")
@@ -116,7 +123,7 @@ func TestSpawnCwdBounds(t *testing.T) {
 	}
 	var payload string
 	if err := f.db.QueryRow(`SELECT payload FROM events WHERE type='spawned' AND payload LIKE '%in-lane%'`).Scan(&payload); err != nil ||
-		!strings.Contains(payload, `"cwd":"`+lane+`"`) {
+		!strings.Contains(payload, `"cwd":`+js(lane)) {
 		t.Fatalf("spawned event %s, %v; want its cwd", payload, err)
 	}
 	s := f.rt.starts[0] // in-root, a worker: no can_set_cwd

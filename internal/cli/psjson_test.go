@@ -23,6 +23,7 @@ import (
 // a team's members as its reports_to tree, cwds as ps shows them. What the daemon sent stays
 // byte for byte.
 func TestPsJSONProjects(t *testing.T) {
+	skipOnWindows(t, "the fixture's paths are unix paths (the view helpers are covered for Windows paths in internal/view)")
 	r := proto.PsResult{PID: 7, State: core.State{
 		Teams: []core.TeamState{
 			{ID: "t1", Name: "shop", Root: "/w/a/shop", CreatedAt: 10, Members: []core.MemberState{

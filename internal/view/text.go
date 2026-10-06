@@ -125,8 +125,10 @@ func RelCwd(dir, cwd string) string {
 	if cwd == "" || cwd == dir {
 		return ""
 	}
-	if rel, err := filepath.Rel(dir, cwd); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
-		return "./" + rel
+	if rel, err := filepath.Rel(dir, cwd); err == nil {
+		if rel = filepath.ToSlash(rel); rel != ".." && !strings.HasPrefix(rel, "../") {
+			return "./" + rel
+		}
 	}
 	return Home(cwd)
 }
@@ -138,7 +140,7 @@ func ShortPaths(paths []string) []string {
 	parts := make([][]string, len(paths))
 	n := make([]int, len(paths))
 	for i, p := range paths {
-		parts[i] = strings.Split(Home(p), "/")
+		parts[i] = strings.Split(filepath.ToSlash(Home(p)), "/")
 		n[i] = 2
 	}
 	short := func(i int) string {

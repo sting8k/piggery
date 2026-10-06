@@ -3,6 +3,7 @@ package local
 import (
 	"net/url"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -30,7 +31,14 @@ func OpencodeEntry(dir string) string {
 }
 
 // OpencodePluginSpec is the `plugin` entry that loads the plugin at entry.
-func OpencodePluginSpec(entry string) string { return (&url.URL{Scheme: "file", Path: entry}).String() }
+// A Windows path is C:\x\y, which a file URL spells file:///C:/x/y.
+func OpencodePluginSpec(entry string) string {
+	p := filepath.ToSlash(entry)
+	if !strings.HasPrefix(p, "/") {
+		p = "/" + p
+	}
+	return (&url.URL{Scheme: "file", Path: p}).String()
+}
 
 // OpencodeEntryOf is the path a `plugin` entry names when it is piggery's copy of the plugin (a file
 // URL ending in plugins/opencode/<Entry>, wherever the piggery directory is); ok false for any other.
@@ -39,7 +47,11 @@ func OpencodeEntryOf(spec string) (path string, ok bool) {
 	if err != nil || u.Scheme != "file" {
 		return "", false
 	}
-	return u.Path, strings.HasSuffix(u.Path, "/plugins/opencode/"+opencodeext.Entry)
+	p := u.Path
+	if runtime.GOOS == "windows" && len(p) >= 3 && p[0] == '/' && p[2] == ':' { // /C:/x is C:\x
+		p = p[1:]
+	}
+	return filepath.FromSlash(p), strings.HasSuffix(u.Path, "/plugins/opencode/"+opencodeext.Entry)
 }
 
 // OpencodeExtVersion is the integration version of the managed copy at ext; managed is false when
