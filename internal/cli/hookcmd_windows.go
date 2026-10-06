@@ -15,14 +15,25 @@ import (
 
 // The hook commands `piggery setup` writes into Claude Code's plugin and Codex's hooks.json, from
 // the harnesses' documentation (not yet measured on Windows):
-//   - Codex runs the command string as `cmd.exe /C "<command>"` (openai/codex #32402, #38168): a
-//     quoted executable path first, then plain words, is the shape that works there.
+//   - Codex runs the command string as `cmd.exe /C "<command>"` (openai/codex #38168): a quoted
+//     executable path first, then plain words, is the shape that works there. A Codex from before
+//     that passed the string as one argument, its quotes escaped as \", which cmd.exe does not read
+//     (#32402): no command with a quote in it ran. So the path is quoted only when cmd.exe would
+//     not take it as one word, and a path without a space runs on every Codex.
 //   - Claude Code runs a command string in Git Bash, or in PowerShell when Git Bash is not
 //     installed, so no one quoting is right. A handler with `args` is spawned directly with no shell
 //     (its hooks reference, "Exec form"): self and its arguments go in as they are.
 
 // codexHookCommand is the command string Codex runs for piggery's hook of event.
-func codexHookCommand(self, event string) string { return `"` + self + `" hook codex ` + event }
+func codexHookCommand(self, event string) string {
+	if strings.ContainsAny(self, cmdSpecial) {
+		self = `"` + self + `"`
+	}
+	return self + " hook codex " + event
+}
+
+// cmdSpecial are the characters a file name must be quoted for in cmd.exe (its own help, cmd /?).
+const cmdSpecial = " \t&()[]{}^=;!'+,`~"
 
 // claudeHookHandler is the handler piggery's hook of event is in Claude's hooks.json.
 func claudeHookHandler(self, event string) map[string]any {
