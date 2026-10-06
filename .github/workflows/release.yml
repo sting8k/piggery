@@ -16,9 +16,12 @@ jobs:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash # Git Bash on Windows too: one syntax, and the shell expands the globs
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -30,7 +33,16 @@ jobs:
         with:
           node-version: 22
       - run: go vet ./...
-      - run: go test -race ./...
+      - name: Go tests
+        if: runner.os != 'Windows'
+        run: go test -race ./...
+      # As in ci.yml: no -race, and Git for Windows' sh, ps, sleep and coreutils off PATH.
+      - name: Go tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr|bin|mingw64)' }) -join ';'
+          go test ./...
       - run: node --test extensions/pi/*.test.mjs
       - name: Paseo plugin
         working-directory: extensions/paseo
@@ -49,6 +61,8 @@ jobs:
           - { goos: linux, goarch: arm64 }
           - { goos: darwin, goarch: amd64 }
           - { goos: darwin, goarch: arm64 }
+          - { goos: windows, goarch: amd64, ext: .exe }
+          - { goos: windows, goarch: arm64, ext: .exe }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -61,11 +75,12 @@ jobs:
           CGO_ENABLED: "0"
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
+          EXT: ${{ matrix.ext }} # .exe on Windows: the asset `piggery update` and install.ps1 ask for
         run: |
           mkdir -p dist
           go build -trimpath \
             -ldflags "-s -w -X github.com/sting8k/piggery/internal/cli.Version=${GITHUB_REF_NAME}" \
-            -o "dist/piggery-${GOOS}-${GOARCH}" ./cmd/piggery
+            -o "dist/piggery-${GOOS}-${GOARCH}${EXT}" ./cmd/piggery
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: piggery-${{ matrix.goos }}-${{ matrix.goarch }}
