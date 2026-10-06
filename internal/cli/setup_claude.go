@@ -219,6 +219,9 @@ func installClaude(dir, self string) (string, error) {
 	if _, err := exec.LookPath(claudeBin); err != nil {
 		return "", errors.New("claude: `claude` is not on PATH; install Claude Code first")
 	}
+	if err := claudeHooksSupported(); err != nil {
+		return "", err
+	}
 	if err := writeClaudePlugin(root, self); err != nil {
 		return "", err
 	}

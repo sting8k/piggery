@@ -292,6 +292,14 @@ func (d *Driver) Start(_ context.Context, s core.Spec) (core.Proc, error) {
 	}
 
 	cmd := exec.Command(l.cmd, l.args...)
+	if err := prepareCommand(cmd); err != nil {
+		inR.Close()
+		inW.Close()
+		outR.Close()
+		outW.Close()
+		cleanup()
+		return core.Proc{}, err
+	}
 	cmd.Dir = s.Cwd
 	cmd.Env = workerEnv(os.Environ(), s, l.env)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = inR, outW, stderr

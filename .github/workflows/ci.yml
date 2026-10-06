@@ -49,9 +49,13 @@ jobs:
           $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr|bin|mingw64)' }) -join ';'
           Get-Command sh, ps, sleep, ls -CommandType Application -ErrorAction SilentlyContinue | Format-Table Name, Source
           go test ./...
-      - run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
+      - name: Node tests
+        if: ${{ !cancelled() }} # a failed Go step must not hide these
+        run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
       - name: Paseo plugin
+        if: ${{ !cancelled() }}
         working-directory: extensions/paseo
         run: npm ci --ignore-scripts && npm run typecheck && npm test
       - name: govulncheck
+        if: ${{ !cancelled() }}
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...

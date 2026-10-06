@@ -11,12 +11,12 @@
 // No npm dependencies: dsh's objects are used as they come. PIGGERY_DISABLED=1 makes it inert.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { Turns } from "../pi/adapter.mjs";
-import { Client, daemonAddress } from "../pi/client.mjs";
+import { Client, daemonAddress, daemonUp } from "../pi/client.mjs";
 import { afterRetire, render, renderWho, sentText } from "../pi/render.mjs";
 import { Bridge } from "./bridge.mjs";
 import { Records } from "./records.mjs";
@@ -322,7 +322,7 @@ export function apply(ctx, config) {
 		async ensureConnected() {
 			if (this.stale) throw new Error("this dsh session no longer drives a piggery participant");
 			if (this.client?.ready) return;
-			if (!existsSync(sockPath())) await startDaemon();
+			if (!(await daemonUp())) await startDaemon();
 			this.client?.stop();
 			this.startClient(this.envAuth ?? this.auth);
 			for (let i = 0; i < 100 && !this.client?.ready && !this.stale; i++) await sleep(100);
@@ -418,7 +418,7 @@ export function apply(ctx, config) {
 			parts.set(id, part);
 			part.start();
 		}
-		if (existsSync(sockPath())) await Promise.race([parts.get(id).identified, sleep(1500)]);
+		if (await daemonUp()) await Promise.race([parts.get(id).identified, sleep(1500)]);
 	};
 
 	// A failure here must never fail the agent's creation.
@@ -574,8 +574,8 @@ async function startDaemon() {
 			resolve();
 		});
 	}).finally(() => closeSync(out));
-	for (let i = 0; i < 50 && !existsSync(daemonAddress()) && !exited; i++) await sleep(100);
-	if (existsSync(daemonAddress())) return;
+	for (let i = 0; i < 50 && !(await daemonUp()) && !exited; i++) await sleep(100);
+	if (await daemonUp()) return;
 	// Its reason is the last line it wrote to the log (e.g. a bad config.yaml).
 	const lines = readFileSync(logFile).subarray(from).toString("utf8").trim().split("\n");
 	const why = (lines[lines.length - 1] ?? "").replace(/^piggery serve: /, "").trim() || "piggery serve exited";

@@ -51,6 +51,16 @@ func psInfo(_ context.Context, pid int) (start int64, command string, alive bool
 	return ct.Nanoseconds() / 1_000_000, windows.UTF16ToString(buf[:n]), true, nil
 }
 
+// ProcessImage is the file name of pid's program without its .exe suffix and in lower case ("claude"
+// for claude.exe); "" when pid is not there or cannot be read.
+func ProcessImage(pid int) string {
+	_, image, alive, err := psInfo(context.Background(), pid)
+	if err != nil || !alive {
+		return ""
+	}
+	return strings.TrimSuffix(strings.ToLower(filepath.Base(image)), ".exe")
+}
+
 func exitCode(h windows.Handle) (uint32, bool) {
 	var code uint32
 	return code, windows.GetExitCodeProcess(h, &code) == nil

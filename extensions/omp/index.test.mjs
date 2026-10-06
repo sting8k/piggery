@@ -2,12 +2,13 @@
 // socket and a fake omp API, and replays the event captures of testdata/fixtures/omp/ into its
 // handlers: what the daemon is told (harness.event, presence) and what is shown to the model.
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { register } from "node:module";
 import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fakeDaemonPath, setHome } from "../testutil/daemon.mjs";
 
 // pi-ai is only used for the tools' parameter schemas; Unsafe keeps tools.json's schema as is.
 const piAi = "export const Type = new Proxy({}, { get: (_, k) => (k === 'Unsafe' ? (s) => s : (...a) => ({ a })) });";
@@ -32,8 +33,7 @@ const fixture = (name) =>
 		.map((l) => JSON.parse(l));
 
 test("the omp extension against a fake daemon", async (t) => {
-	process.env.HOME = mkdtempSync(join(tmpdir(), "pgomp"));
-	mkdirSync(join(process.env.HOME, ".piggery"));
+	setHome(mkdtempSync(join(tmpdir(), "pgomp")));
 	delete process.env.PIGGERY_ID;
 	delete process.env.PIGGERY_TOKEN;
 	delete process.env.PIGGERY_DISABLED;
@@ -64,7 +64,7 @@ test("the omp extension against a fake daemon", async (t) => {
 			}
 		});
 	});
-	await new Promise((r) => srv.listen(join(process.env.HOME, ".piggery", "piggery.sock"), r));
+	await new Promise((r) => srv.listen(fakeDaemonPath(process.env.HOME), r));
 	t.after(() => srv.close());
 	const push = (frame) => socks.forEach((s) => s.write(JSON.stringify(frame) + "\n"));
 

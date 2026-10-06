@@ -1,6 +1,6 @@
 // JSON-lines client for the piggery daemon socket. No pi imports.
 // Responses carry the request `id`; server pushes carry `event` and no `id`.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import net from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -18,6 +18,25 @@ export function daemonAddress() {
 	} catch {
 		return "";
 	}
+}
+
+/**
+ * Whether a daemon answers at its address. On unix its socket file says; on Windows existsSync on a
+ * pipe is a real connection that fails while every instance is busy, so it is a connect attempt (a
+ * missing pipe is ENOENT; a busy one is waited for).
+ */
+export function daemonUp() {
+	const path = daemonAddress();
+	if (process.platform !== "win32") return Promise.resolve(existsSync(path));
+	if (!path) return Promise.resolve(false);
+	return new Promise((resolve) => {
+		const s = net.createConnection(path);
+		s.once("connect", () => {
+			s.destroy();
+			resolve(true);
+		});
+		s.once("error", () => resolve(false));
+	});
 }
 
 export class Client {

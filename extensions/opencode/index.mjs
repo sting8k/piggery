@@ -20,11 +20,11 @@
 // event, and the daemon connection is made then.
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { appendFileSync, closeSync, existsSync, fstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
+import { appendFileSync, closeSync, fstatSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { Turns } from "../pi/adapter.mjs";
-import { Client, daemonAddress } from "../pi/client.mjs";
+import { Client, daemonAddress, daemonUp } from "../pi/client.mjs";
 import { afterRetire, render, renderWho, sentText } from "../pi/render.mjs";
 import { Bridge, NUDGE } from "./bridge.mjs";
 import { Records } from "./records.mjs";
@@ -169,7 +169,7 @@ class Host {
 		if (w && (w.session ? sid !== w.session : info.metadata?.piggery_participant !== w.auth.id)) return null;
 		const part = new Part(this, sid, info);
 		part.start();
-		if (existsSync(daemonAddress())) await Promise.race([part.identified, sleep(1500)]);
+		if (await daemonUp()) await Promise.race([part.identified, sleep(1500)]);
 		return part;
 	}
 
@@ -442,7 +442,7 @@ class Part {
 	async ensureConnected() {
 		if (this.stale) throw new Error("this opencode session no longer drives a piggery participant");
 		if (this.client?.ready) return;
-		if (!existsSync(daemonAddress())) await startDaemon();
+		if (!(await daemonUp())) await startDaemon();
 		this.client?.stop();
 		this.startClient(this.envAuth ?? this.auth);
 		for (let i = 0; i < 100 && !this.client?.ready && !this.stale; i++) await sleep(100);
@@ -531,8 +531,8 @@ async function startDaemon() {
 			resolve();
 		});
 	}).finally(() => closeSync(out));
-	for (let i = 0; i < 50 && !existsSync(daemonAddress()) && !exited; i++) await sleep(100);
-	if (existsSync(daemonAddress())) return;
+	for (let i = 0; i < 50 && !(await daemonUp()) && !exited; i++) await sleep(100);
+	if (await daemonUp()) return;
 	// Its reason is the last line it wrote to the log (e.g. a bad config.yaml).
 	const lines = readFileSync(logFile).subarray(from).toString("utf8").trim().split("\n");
 	const why = (lines[lines.length - 1] ?? "").replace(/^piggery serve: /, "").trim() || "piggery serve exited";

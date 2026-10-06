@@ -25,3 +25,6 @@ func claudeHookHandler(self, event string) map[string]any {
 func claudeHookRunsSelf(command string, _ []string, self string) bool {
 	return strings.HasPrefix(command, local.ShellQuote(self)+" hook claude ")
 }
+
+// claudeHooksSupported: the installed Claude Code runs the hooks setup writes (any version does).
+func claudeHooksSupported() error { return nil }

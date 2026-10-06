@@ -74,25 +74,65 @@ func TestExitCode259IsNotAliveProcess(t *testing.T) {
 	}
 }
 
-// What Start passes a .cmd shim (an npm-installed claude or codex is one) reaches the program as
-// it was: cmd.exe reads the line a batch file is started with by its own rules, and Go does not
-// quote for them (os/exec documents it). The role card, which Claude gets as an argument, holds
-// newlines, quotes and percent signs.
-func TestArgumentsSurviveACmdShim(t *testing.T) {
-	shim := filepath.Join(t.TempDir(), "tool.cmd")
-	if err := os.WriteFile(shim, []byte("@\""+os.Args[0]+"\" \"-test.run=^TestHelperProcess$\" -- %*\r\n"), 0o600); err != nil {
+// What Start passes an npm .cmd shim reaches the program as it was: cmd.exe would read the line a
+// batch file is started with by its own rules (os/exec documents that Go does not quote for it),
+// cut it at the first newline and expand %VAR%, and a Claude worker's role card has both. So
+// prepareCommand runs the shim's target directly. The shim here is npm's own form (cmd-shim), its
+// node.exe this test binary (the shim runs the node.exe beside it first) and its script an argument.
+func TestArgumentsSurviveAnNpmShim(t *testing.T) {
+	dir := t.TempDir()
+	copyFile(t, os.Args[0], filepath.Join(dir, "node.exe"))
+	script := filepath.Join(dir, "node_modules", "pkg", "cli.js")
+	if err := os.MkdirAll(filepath.Dir(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	os.WriteFile(script, nil, 0o600)
+	shim := "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n:start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\n" +
+		"IF EXIST \"%dp0%\\node.exe\" (\r\n  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n)\r\n\r\n" +
+		"endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  \"-test.run=^TestHelperProcess$\" -- \"%dp0%\\node_modules\\pkg\\cli.js\" %*\r\n"
+	shimPath := filepath.Join(dir, "tool.cmd")
+	if err := os.WriteFile(shimPath, []byte(shim), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	out := filepath.Join(t.TempDir(), "argv.json")
-	want := []string{"plain", "two words", "line one\nline two", "a&b", "x|y", "100%", "%OS%", `say "hi"`, "c^d", "(paren)", "<>"}
-	cmd := exec.Command(shim, want...)
+	args := []string{"plain", "two words", "line one\nline two", "a&b", "x|y", "100%", "%OS%", `say "hi"`, "c^d", "(paren)", "<>"}
+	cmd := exec.Command(shimPath, args...)
+	if err := prepareCommand(cmd); err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(cmd.Path) != "node.exe" {
+		t.Fatalf("the shim was not looked through: %s", cmd.Path)
+	}
 	cmd.Env = append(os.Environ(), "PGDRV_WRAP=", "PGDRV_HELPER=argv", "PGDRV_OUT="+out)
 	if b, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("shim: %v\n%s", err, b)
 	}
 	var got []string
 	b, err := os.ReadFile(out)
-	if err != nil || json.Unmarshal(b, &got) != nil || !slices.Equal(got, want) {
+	if want := append([]string{script}, args...); err != nil || json.Unmarshal(b, &got) != nil || !slices.Equal(got, want) {
 		t.Fatalf("the program got %q (%v); want %q", got, err, want)
+	}
+}
+
+// A .cmd of another form is run as it is, but an argument it cannot pass on is refused, not cut.
+func TestUnknownCmdShimRefusesANewline(t *testing.T) {
+	shim := filepath.Join(t.TempDir(), "odd.cmd")
+	os.WriteFile(shim, []byte("@echo off\r\n"), 0o600)
+	if err := prepareCommand(exec.Command(shim, "one\ntwo")); err == nil {
+		t.Fatal("an argument with a newline went to a .cmd of an unknown form")
+	}
+	if err := prepareCommand(exec.Command(shim, "one two")); err != nil {
+		t.Fatalf("plain arguments refused: %v", err)
+	}
+}
+
+func copyFile(t *testing.T, from, to string) {
+	t.Helper()
+	b, err := os.ReadFile(from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(to, b, 0o700); err != nil {
+		t.Fatal(err)
 	}
 }

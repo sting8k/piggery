@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,6 +18,12 @@ import (
 // TestMain lets this test binary stand in for `claude` (fakeClaude) and `paseo` (fakePaseo) when
 // a test puts it on PATH under that name.
 func TestMain(m *testing.M) {
+	// A test that autostarts a daemon would run this binary as `serve`, which a test binary takes
+	// for a whole test run, detached: on Windows its image stays locked until go cannot delete it.
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		fmt.Fprintln(os.Stderr, "the cli test binary was started as a daemon: a test dialed with autostart (use --no-start)")
+		os.Exit(3)
+	}
 	if log := os.Getenv("PIGGERY_FAKE_CLAUDE"); log != "" && strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "claude" {
 		os.Exit(fakeClaude(log, os.Args[1:]))
 	}
@@ -30,6 +37,10 @@ func TestMain(m *testing.M) {
 // ~/.claude.json (mcpServers, like Claude) and ~/fake-claude.json (marketplaces and plugins,
 // listed with --json). Installing copies the plugin, as Claude does. argv goes to log.
 func fakeClaude(log string, args []string) int {
+	if len(args) == 1 && args[0] == "--version" { // setup asks (Windows); not a change to Claude, so not logged
+		fmt.Println("2.1.283 (Claude Code)")
+		return 0
+	}
 	f, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	f.WriteString(strings.Join(args, " ") + "\n")
 	f.Close()

@@ -126,7 +126,9 @@ func RelCwd(dir, cwd string) string {
 		return ""
 	}
 	if rel, err := filepath.Rel(dir, cwd); err == nil {
-		if rel = filepath.ToSlash(rel); rel != ".." && !strings.HasPrefix(rel, "../") {
+		if rel = filepath.ToSlash(rel); rel == "." { // the same directory spelled another way (/w and \w)
+			return ""
+		} else if rel != ".." && !strings.HasPrefix(rel, "../") {
 			return "./" + rel
 		}
 	}
