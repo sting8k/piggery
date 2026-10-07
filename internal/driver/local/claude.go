@@ -165,7 +165,7 @@ func (c *claudeCodec) launch(s core.Spec) (launch, error) {
 	}
 	mcp, err := c.mcpConfig(prof.Blacklist)
 	if err != nil {
-		os.RemoveAll(filepath.Dir(settings))
+		removeRun(filepath.Dir(settings))
 		return launch{}, err
 	}
 	args := []string{"-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
@@ -203,7 +203,7 @@ func (c *claudeCodec) launch(s core.Spec) (launch, error) {
 		env:      append([]string{"CLAUDE_CODE_DISABLE_AGENT_VIEW=1"}, prof.Env...),
 		model:    model,
 		thinking: effort,
-		cleanup:  func() { os.RemoveAll(filepath.Dir(settings)) },
+		cleanup:  func() { removeRun(filepath.Dir(settings)) },
 	}, nil
 }
 
@@ -256,7 +256,7 @@ func (c *claudeCodec) writeSettings(s core.Spec, blacklist []string) (string, er
 	b, _ := json.MarshalIndent(set, "", " ")
 	path := filepath.Join(dir, "settings.json")
 	if err := os.WriteFile(path, b, 0o600); err != nil {
-		os.RemoveAll(dir)
+		removeRun(dir)
 		return "", err
 	}
 	return path, nil

@@ -231,8 +231,8 @@ func TestWorkerEnvTailAndDialogCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("OnExit not called")
 	}
-	if _, err := os.Stat(agentDir); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("agent dir after the run ended: %v; want removed", err)
+	if _, err := os.Stat(filepath.Dir(agentDir)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the worker's run dir after the run ended: %v; want removed, its now empty parent too", err)
 	}
 	// Stop on a worker that already exited signals nothing (its pgid may be reused) and
 	// returns the recorded exit.

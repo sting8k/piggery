@@ -93,6 +93,7 @@ export default function piggery(pi: ExtensionAPI) {
 		presence: (event: string) => client!.call("presence", { event }),
 		deliver,
 		newKey: () => randomUUID(),
+		pending: () => ctx?.hasPendingMessages() ?? false,
 		onError: (err: any) => {
 			// Outages are logged once by the client; a fatal error is reported by retire().
 			if (!err?.notConnected && !err?.fatal) log(`piggery: ${err?.message ?? err}`);
@@ -360,6 +361,7 @@ export default function piggery(pi: ExtensionAPI) {
 	// pi's events -> standard adapter events. pi awaits agent_before_settle, so a
 	// blocked end (more mail) is steered in before pi decides whether to run on.
 	pi.on("agent_start", () => turns.agentStart());
+	pi.on("turn_start", () => turns.modelTurn());
 	pi.on("turn_end", () => turns.toolBoundary());
 	pi.on("agent_before_settle", async (e) => {
 		await turns.beforeSettle(e.outcome);

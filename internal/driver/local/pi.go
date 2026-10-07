@@ -119,7 +119,7 @@ func (c piCodec) launch(s core.Spec) (launch, error) {
 		args:     args,
 		env:      []string{"PI_CODING_AGENT_DIR=" + agentDir},
 		thinking: thinking,
-		cleanup:  func() { os.RemoveAll(agentDir) },
+		cleanup:  func() { removeRun(agentDir) },
 	}, nil
 }
 
@@ -148,7 +148,7 @@ func newRunAgentDir(root, src string, settings []settingsFile, s core.Spec, blac
 	// -e paths resolve against the worker's cwd, as pi resolves them.
 	bl := newBlacklist(blacklist, skip, home, s.Cwd)
 	if err := buildAgentDirWith(src, dir, home, bl, settings); err != nil {
-		os.RemoveAll(dir)
+		removeRun(dir)
 		return "", err
 	}
 	return dir, nil

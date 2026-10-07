@@ -5,11 +5,12 @@ import test from "node:test";
 import { Turns } from "./adapter.mjs";
 
 // A fake io: records harness.event calls and deliveries; answer(args) is the daemon's reply.
-function setup(answer = () => ({})) {
+function setup(answer = () => ({}), pending) {
 	const calls = [];
 	const shown = [];
 	let n = 0;
 	const turns = new Turns({
+		pending,
 		event: async (a) => {
 			calls.push(a);
 			return answer(a);
@@ -112,4 +113,31 @@ test("a blocked end steers the mail and the turn goes on; an end the daemon miss
 	assert.deepEqual(calls.filter((c) => c.event === "turn_end").map((c) => c.prompt_id), ["k1", "k1"]);
 	assert.deepEqual(turns.takeEnded(), [{ key: "k1", outcome: "ok" }]);
 	assert.deepEqual(turns.ended, []);
+});
+
+test("mail steered at the run's last boundary keeps the turn open: pi runs on with it, and only that run's end acks", async () => {
+	let mail = "#949";
+	const { turns, calls, shown } = setup((a) => {
+		if (a.event !== "tool_boundary" || !mail) return {};
+		const text = mail;
+		mail = "";
+		return { text };
+	}, () => false);
+	turns.agentStart();
+	turns.modelTurn();
+	turns.toolBoundary(); // pi's turn_end after the last reply: the daemon gives #949 as a steer
+	await turns.beforeSettle("completed"); // pi goes on with the queued steer: not the end
+	assert.deepEqual(shown, [{ text: "#949", steer: true }]);
+	assert.equal(calls.filter((c) => c.event === "turn_end").length, 0);
+	turns.modelTurn(); // the model turn that reads #949
+	mail = "#955";
+	turns.toolBoundary(); // later mail still reaches the same turn
+	await turns.drain();
+	turns.modelTurn();
+	turns.toolBoundary();
+	await turns.beforeSettle("completed");
+	turns.settled();
+	await turns.drain();
+	assert.deepEqual(shown.at(-1), { text: "#955", steer: true });
+	assert.deepEqual(calls.filter((c) => c.event === "turn_end"), [{ event: "turn_end", prompt_id: "k1", outcome: "ok" }]);
 });
