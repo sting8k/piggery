@@ -45,7 +45,11 @@
             if ($f.Count -eq 2 -and ($f[1] -eq $name -or $f[1] -eq "*$name")) { $want = $f[0].ToLower() }
         }
         if (-not $want) { throw "piggery install: checksums.txt has no line for $name" }
-        $got = (Get-FileHash -LiteralPath $bin -Algorithm SHA256).Hash.ToLower()
+        # .NET, not Get-FileHash: Windows PowerShell 5.1 loads that cmdlet from PSModulePath, and one
+        # started from inside pwsh inherits PowerShell 7's, where it is not found.
+        $s = [IO.File]::OpenRead($bin)
+        try { $got = -join ([Security.Cryptography.SHA256]::Create().ComputeHash($s) | ForEach-Object { $_.ToString('x2') }) }
+        finally { $s.Dispose() }
         if ($got -ne $want) { throw "piggery install: checksum mismatch for $name (got $got, want $want); nothing installed" }
 
         New-Item -ItemType Directory -Force -Path $dir | Out-Null
