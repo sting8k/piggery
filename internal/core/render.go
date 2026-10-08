@@ -122,7 +122,7 @@ func RenderWho(ps []Presence, selfID string) string {
 		out = append(out, fmt.Sprintf("Your team %s:", members[0].Team))
 		for _, p := range members {
 			out = append(out, fmt.Sprintf("  %s (%s) %s%s%s%s", p.Name, p.Role, p.State,
-				flag(p.Gate, " [gate]"), flag(p.ID == selfID, " (you)"), id(p)))
+				flag(p.Gate, " [gate]")+flag(p.Closed, " [gate closed]"), flag(p.ID == selfID, " (you)"), id(p)))
 		}
 	}
 	if len(teams) > 0 {
@@ -138,8 +138,8 @@ func RenderWho(ps []Presence, selfID string) string {
 	if len(solos) > 0 {
 		out = append(out, "Solo sessions (each is its own gate):")
 		for _, p := range solos {
-			out = append(out, fmt.Sprintf("  %s (cwd %s) %s%s%s%s", p.Name, p.Cwd, p.State,
-				flag(p.Admittable, " [admittable]"), flag(p.ID == selfID, " (you)"), id(p)))
+			out = append(out, fmt.Sprintf("  %s (cwd %s) %s%s%s%s%s", p.Name, p.Cwd, p.State,
+				flag(p.Admittable, " [admittable]"), flag(p.Closed, " [gate closed]"), flag(p.ID == selfID, " (you)"), id(p)))
 		}
 	}
 	if len(out) == 0 {

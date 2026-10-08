@@ -119,7 +119,8 @@ func (t *txn) gateIfNone(teamID, id string) error {
 
 // resolveSendTarget resolves a send's to: a member of p's own team (id or name) first; then an open
 // team's name, which is its gate; then a participant of another open team or a live solo, by id or
-// name. other is the target's team (id "" = a solo) when it is not p's. Several matches at the last
+// name. A team or solo with a closed gate is not found (unless it is p's caller or taskforce), and p with a closed
+// gate reaches none of them. other is the target's team (id "" = a solo) when it is not p's. Several matches at the last
 // step -> visibility.ambiguous.
 func (t *txn) resolveSendTarget(p participant, to string) (q participant, other *teamRef, err error) {
 	if p.team != "" {
@@ -134,14 +135,23 @@ func (t *txn) resolveSendTarget(p participant, to string) (q participant, other 
 		to, p.team).Scan(&team.id, &team.name)
 	switch {
 	case err == nil:
-		gate, ok, err := t.teamGate(team.id)
+		seen, selfClosed, err := t.gateStands(p, team.id, "")
 		if err != nil {
 			return q, nil, err
 		}
-		if !ok {
-			return q, nil, noGate(p, to, team.name)
+		if selfClosed {
+			return q, nil, gateClosedSelf(p, to)
 		}
-		return gate, &team, nil
+		if seen { // a closed gate is no team of that name
+			gate, ok, err := t.teamGate(team.id)
+			if err != nil {
+				return q, nil, err
+			}
+			if !ok {
+				return q, nil, noGate(p, to, team.name)
+			}
+			return gate, &team, nil
+		}
 	case !errors.Is(err, sql.ErrNoRows):
 		return q, nil, internal(err)
 	}
@@ -154,17 +164,32 @@ func (t *txn) resolveSendTarget(p participant, to string) (q participant, other 
 	}
 	defer rows.Close()
 	var ids []string
+	var cands []participant
+	var names []string
 	for rows.Next() {
 		var name string
 		c, err := scanParticipant(rows, &name)
 		if err != nil {
 			return q, nil, internal(err)
 		}
-		q, other = c, &teamRef{id: c.team, name: name}
-		ids = append(ids, c.id)
+		cands, names = append(cands, c), append(names, name)
 	}
 	if err := rows.Err(); err != nil {
 		return q, nil, internal(err)
+	}
+	selfClosed := false
+	for i, c := range cands {
+		seen, self, err := t.gateStands(p, c.team, c.id)
+		if err != nil {
+			return q, nil, err
+		}
+		if seen { // a closed gate is no participant of that name
+			q, other, selfClosed = c, &teamRef{id: c.team, name: names[i]}, selfClosed || self
+			ids = append(ids, c.id)
+		}
+	}
+	if selfClosed {
+		return q, nil, gateClosedSelf(p, to)
 	}
 	switch len(ids) {
 	case 0:

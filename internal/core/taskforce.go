@@ -168,6 +168,9 @@ func (e *Engine) spawnTaskforce(ctx context.Context, c Caller, a AgentArgs) (Age
 		if _, err := t.ExecContext(t.ctx, `UPDATE teams SET parent_id=? WHERE id=?`, p.id, team); err != nil {
 			return internal(err)
 		}
+		if err := t.inheritGate(team, p); err != nil {
+			return err
+		}
 		if ref, err = newUUID(); err != nil {
 			return internal(err)
 		}
@@ -481,7 +484,13 @@ func (t *txn) taskforceCard(p participant, m manifest) (string, error) {
 	if !contains(m.Roles[p.role].Tools, "agent") {
 		return "", nil
 	}
-	return callTaskforceText(p.toolPrefix, t.taskforceLinesOf(p)), nil
+	return gateText(p.toolPrefix) + callTaskforceText(p.toolPrefix, t.taskforceLinesOf(p)), nil
+}
+
+// gateText is what a solo's and a gate's card says about its gate.
+func gateText(prefix string) string {
+	return " Only when the Human asks, " + prefix + "agent action=gate_close closes your gate (other teams and solos then neither see" +
+		" nor mail you, and you see none of them; a taskforce you called still reaches you) and action=gate_open opens it again."
 }
 
 // taskforceWarnings names the keys of the taskforce block this binary does not know and ignores.

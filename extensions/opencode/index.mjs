@@ -497,7 +497,7 @@ const TOOL_BODIES = {
 			return `founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`;
 		}
 		if (p.action === "templates") return (await cl().call("agent", { action: "templates" })).text;
-		if (!part.inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team)) throw new Error("you are a solo session: only actions templates, found, reopen, and spawn with template or close with team for a taskforce");
+		if (!part.inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team) && !p.action.startsWith("gate_")) throw new Error("you are a solo session: only actions templates, found, reopen, gate_close, gate_open, and spawn with template or close with team for a taskforce");
 		const r = await cl().call("agent", p);
 		if (p.action === "close" && !p.team) {
 			// The team is closed and this participant left it (no retire push to the caller).
@@ -511,6 +511,7 @@ const TOOL_BODIES = {
 		// Names and #N only, no ids.
 		if (p.action === "spawn") return p.template ? `called up taskforce ${r.team_name}; its task is #${r.task_seq}; write to it as ${r.team_name}, its result comes to you as mail` : `spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`;
 		if (p.action === "resume" && r.task_seq) return `resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`;
+		if (p.action === "gate_close" || p.action === "gate_open") return r.text;
 		if (p.action === "admit") return `admitted ${p.target} as ${p.role}`;
 		return `${p.action} ok: ${p.target}`;
 	},

@@ -39,14 +39,16 @@ type TeamState struct {
 	Template string `json:"template"` // the template it was founded from
 	// Parent and ParentID: the participant (name, id) that called this team up as a taskforce
 	// (spawn template=); "" for an ordinary team.
-	Parent    string        `json:"parent,omitempty"`
-	ParentID  string        `json:"parent_id,omitempty"`
-	Root      string        `json:"root"`
-	Gate      string        `json:"gate"` // gate's name, "" when the team has none
-	Held      int           `json:"held"`
-	Unacked   int           `json:"unacked"`
-	Members   []MemberState `json:"members"`
-	CreatedAt int64         `json:"created_at"` // when it was brought up
+	Parent   string `json:"parent,omitempty"`
+	ParentID string `json:"parent_id,omitempty"`
+	Root     string `json:"root"`
+	Gate     string `json:"gate"` // gate's name, "" when the team has none
+	// GateClosed: the team's gate is closed to other teams and solos.
+	GateClosed bool          `json:"gate_closed,omitempty"`
+	Held       int           `json:"held"`
+	Unacked    int           `json:"unacked"`
+	Members    []MemberState `json:"members"`
+	CreatedAt  int64         `json:"created_at"` // when it was brought up
 }
 
 // ClosedTeam is a closed team as it was left: its members with their final state.
@@ -144,7 +146,8 @@ type SoloState struct {
 	State        string `json:"state"`
 	StateSince   int64  `json:"state_since"`
 	Unacked      int    `json:"unacked"`
-	CreatedAt    int64  `json:"created_at"` // when it joined
+	CreatedAt    int64  `json:"created_at"`            // when it joined
+	GateClosed   bool   `json:"gate_closed,omitempty"` // its gate is closed to other teams and solos
 	Harness      string `json:"harness,omitempty"`
 	Model        string `json:"model,omitempty"` // as for a member: its session's report, else stored
 	LastActivity int64  `json:"last_activity"`
@@ -190,13 +193,13 @@ func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
 		}
 
 		teams, err := t.QueryContext(t.ctx, `SELECT id, name, template_name, root_cwd, created_at, COALESCE(parent_id,''),
-			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),'') FROM teams WHERE closed_at IS NULL ORDER BY name`)
+			COALESCE((SELECT name FROM participants WHERE id=teams.parent_id),''), gate_closed FROM teams WHERE closed_at IS NULL ORDER BY name`)
 		if err != nil {
 			return internal(err)
 		}
 		for teams.Next() {
 			var ts TeamState
-			if err := teams.Scan(&ts.ID, &ts.Name, &ts.Template, &ts.Root, &ts.CreatedAt, &ts.ParentID, &ts.Parent); err != nil {
+			if err := teams.Scan(&ts.ID, &ts.Name, &ts.Template, &ts.Root, &ts.CreatedAt, &ts.ParentID, &ts.Parent, &ts.GateClosed); err != nil {
 				teams.Close()
 				return internal(err)
 			}
@@ -245,7 +248,7 @@ func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
 		}
 
 		solos, err := t.QueryContext(t.ctx, `SELECT `+participantCols+`, cwd, created_at, COALESCE(session_model, model, ''), protocol_version,
-			transcript, transcript_format, last_turn_end FROM participants
+			transcript, transcript_format, last_turn_end, gate_closed FROM participants
 			WHERE team_id IS NULL AND state<>'gone' ORDER BY created_at, rowid`)
 		if err != nil {
 			return internal(err)
@@ -255,14 +258,15 @@ func (e *Engine) State(ctx context.Context, a StateArgs) (State, error) {
 			var created int64
 			var proto, turn sql.NullInt64
 			var tpath, tformat sql.NullString
-			q, err := scanParticipant(solos, &cwd, &created, &model, &proto, &tpath, &tformat, &turn)
+			var shut bool
+			q, err := scanParticipant(solos, &cwd, &created, &model, &proto, &tpath, &tformat, &turn, &shut)
 			if err != nil {
 				solos.Close()
 				return internal(err)
 			}
 			out.Solos = append(out.Solos, SoloState{ID: q.id, Name: q.name, Cwd: cwd, State: q.state,
 				StateSince: q.stateSince, Unacked: pending[q.id][0], CreatedAt: created, Harness: q.harness, Model: model,
-				LastActivity: q.lastActivity, LastTurnEnd: turn.Int64, ProtocolVersion: intOrNil(proto), Transcript: transcriptOrNil(tpath, tformat)})
+				LastActivity: q.lastActivity, LastTurnEnd: turn.Int64, GateClosed: shut, ProtocolVersion: intOrNil(proto), Transcript: transcriptOrNil(tpath, tformat)})
 		}
 		solos.Close()
 		if err := solos.Err(); err != nil {

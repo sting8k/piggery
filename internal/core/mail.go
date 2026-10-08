@@ -465,6 +465,10 @@ func (e *Engine) Who(ctx context.Context, c Caller) ([]Presence, error) {
 			return err
 		}
 		out = []Presence{}
+		closed, err := t.unitClosed(p.team, p.id)
+		if err != nil {
+			return err
+		}
 		var root string // the caller's team root ("" for a solo)
 		if p.team == "" {
 			var cwd string
@@ -472,7 +476,7 @@ func (e *Engine) Who(ctx context.Context, c Caller) ([]Presence, error) {
 				return internal(err)
 			}
 			out = append(out, Presence{Kind: WhoSolo, ID: p.id, Name: p.name, State: p.state, StateSince: p.stateSince,
-				LastActivity: p.lastActivity, Cwd: cwd, Gate: true})
+				LastActivity: p.lastActivity, Cwd: cwd, Gate: true, Closed: closed})
 		} else {
 			var team string
 			if err := t.QueryRowContext(t.ctx, `SELECT name, root_cwd FROM teams WHERE id=?`, p.team).Scan(&team, &root); err != nil {
@@ -493,7 +497,8 @@ func (e *Engine) Who(ctx context.Context, c Caller) ([]Presence, error) {
 					return internal(err)
 				}
 				out = append(out, Presence{Kind: WhoMember, ID: q.id, Name: q.name, Role: q.role, State: q.state,
-					StateSince: q.stateSince, LastActivity: q.lastActivity, Team: team, Gate: q.id == gate.id})
+					StateSince: q.stateSince, LastActivity: q.lastActivity, Team: team, Gate: q.id == gate.id,
+					Closed: closed && q.id == p.id})
 			}
 			rows.Close()
 			if err := rows.Err(); err != nil {
@@ -505,6 +510,11 @@ func (e *Engine) Who(ctx context.Context, c Caller) ([]Presence, error) {
 			return err
 		}
 		for _, tm := range others {
+			if seen, self, err := t.gateStands(p, tm.id, ""); err != nil {
+				return err
+			} else if !seen || self {
+				continue
+			}
 			var cwd string
 			if err := t.QueryRowContext(t.ctx, `SELECT root_cwd FROM teams WHERE id=?`, tm.id).Scan(&cwd); err != nil {
 				return internal(err)
@@ -526,6 +536,11 @@ func (e *Engine) Who(ctx context.Context, c Caller) ([]Presence, error) {
 			q, err := scanParticipant(rows, &cwd)
 			if err != nil {
 				return internal(err)
+			}
+			if seen, self, err := t.gateStands(p, "", q.id); err != nil {
+				return err
+			} else if !seen || self {
+				continue
 			}
 			out = append(out, Presence{Kind: WhoSolo, ID: q.id, Name: q.name, State: q.state, StateSince: q.stateSince,
 				LastActivity: q.lastActivity, Cwd: cwd, Gate: true, Admittable: root != "" && cwd == root})

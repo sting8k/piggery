@@ -27,6 +27,8 @@ func (e *Engine) Agent(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 		return e.closeTeam(ctx, c, a)
 	case AgentReopen:
 		return e.reopen(ctx, c, a)
+	case AgentGateClose, AgentGateOpen:
+		return e.gateAction(ctx, c, a.Action == AgentGateClose)
 	}
 	if len(e.runtimes) == 0 {
 		return AgentResult{}, errf(CodeUnsupported, "no runtime driver configured")

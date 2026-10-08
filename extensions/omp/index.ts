@@ -466,7 +466,7 @@ export default function piggery(omp: ExtensionAPI) {
 			return text(`founded team ${r.team_name}; you are ${res.name} (${res.role}), its gate; ${tools}`);
 		}
 		if (p.action === "templates") return text((await client!.call("agent", { action: "templates" }) as any).text);
-		if (!inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team)) throw new Error("you are a solo session: only actions templates, found, reopen, and spawn with template or close with team for a taskforce");
+		if (!inTeam && !(p.action === "spawn" && p.template) && !(p.action === "close" && p.team) && !p.action.startsWith("gate_")) throw new Error("you are a solo session: only actions templates, found, reopen, gate_close, gate_open, and spawn with template or close with team for a taskforce");
 		const r: any = await client!.call("agent", p);
 		if (p.action === "close" && !p.team) {
 			// The team is closed and this participant left it (no retire push to the caller).
@@ -484,6 +484,7 @@ export default function piggery(omp: ExtensionAPI) {
 		// Names and #N only, no ids.
 		if (p.action === "spawn") return text(p.template ? `called up taskforce ${r.team_name}; its task is #${r.task_seq}; write to it as ${r.team_name}, its result comes to you as mail` : `spawned ${p.name}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "resume" && r.task_seq) return text(`resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`);
+		if (p.action === "gate_close" || p.action === "gate_open") return text(r.text);
 		if (p.action === "admit") return text(`admitted ${p.target} as ${p.role}`);
 		return text(`${p.action} ok: ${p.target}`);
 	});

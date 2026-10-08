@@ -182,14 +182,23 @@ func (t *txn) insertSession(teamID, role, cwd, run, token string, a JoinAutoArgs
 	if err != nil {
 		return "", err
 	}
+	closed := t.soloClosed
+	if teamID == "" { // a session whose team closed takes that team's gate; else the configured default
+		err := t.QueryRowContext(t.ctx, `SELECT COALESCE((SELECT gate_closed FROM teams WHERE id=team_id), gate_closed)
+			FROM participants WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?))
+			AND person=1 ORDER BY created_at DESC, rowid DESC LIMIT 1`, a.HarnessRef, a.HarnessRef).Scan(&closed)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return "", internal(err)
+		}
+	}
 	id := newID(t.now)
 	path, format := a.transcriptCols()
 	if _, err := t.ExecContext(t.ctx, `INSERT INTO participants
 		(id, run_id, kind, harness, mode, name, cwd, team_id, role, state, state_since, last_activity,
-		 token_hash, harness_ref, created_at, host, session_ref, transcript, transcript_format, person)
-		VALUES (?,?,'agent',?,?,?,?,?,?,'idle',?,?,?,?,?,?,?,?,?,1)`,
+		 token_hash, harness_ref, created_at, host, session_ref, transcript, transcript_format, person, gate_closed)
+		VALUES (?,?,'agent',?,?,?,?,?,?,'idle',?,?,?,?,?,?,?,?,?,1,?)`,
 		id, run, nullStr(a.Harness), nullStr(a.Mode), name, cwd, nullStr(teamID), nullStr(role), t.now, t.now,
-		hashToken(token), a.HarnessRef, t.now, nullStr(a.Host), a.HarnessRef, path, format); err != nil {
+		hashToken(token), a.HarnessRef, t.now, nullStr(a.Host), a.HarnessRef, path, format, closed); err != nil {
 		return "", internal(err)
 	}
 	return id, nil

@@ -28,6 +28,7 @@ type Settings struct {
 	GCArchiveKeep time.Duration // gc archives are deleted after this
 	Harness       string        // workers of no role or session harness; default pi
 	UpdateCheck   bool          // the daily check for a newer release (a release build only)
+	Gate          string        // gate of a new solo: open or closed
 	// Columns are the columns top and ps show after the name, in order, as written (the CLI
 	// checks them: ColumnsOf). The CLI reads them on every run; the daemon does not use them.
 	Columns []string
@@ -50,13 +51,14 @@ const gcEvery = 24 * time.Hour
 
 // defaultSettings are the settings with no config file, and the values setup writes.
 func defaultSettings() Settings {
-	return Settings{GCClosedAfter: 14 * 24 * time.Hour, GCArchiveKeep: 30 * 24 * time.Hour, Harness: local.Harness, UpdateCheck: true,
+	return Settings{GCClosedAfter: 14 * 24 * time.Hour, GCArchiveKeep: 30 * 24 * time.Hour, Harness: local.Harness, UpdateCheck: true, Gate: "open",
 		Columns: slices.Clone(DisplayColumns), AllowedRoots: []string{}, Prompts: []PromptEntry{}}
 }
 
 // configFile is the settings file's keys (every key LoadSettings takes).
 type configFile struct {
 	Harness string `yaml:"harness"`
+	Gate    string `yaml:"gate"`
 	GC      struct {
 		ClosedAfter *string `yaml:"closed_after"`
 		ArchiveKeep *string `yaml:"archive_keep"`
@@ -95,6 +97,12 @@ func LoadSettings(dir string) (Settings, error) {
 			return set, fmt.Errorf("%s: harness: %q: want one of %s", ConfigPath(dir), raw.Harness, strings.Join(local.Harnesses(), ", "))
 		}
 		set.Harness = raw.Harness
+	}
+	if raw.Gate != "" {
+		if raw.Gate != "open" && raw.Gate != "closed" {
+			return set, fmt.Errorf("%s: gate: %q: want open or closed", ConfigPath(dir), raw.Gate)
+		}
+		set.Gate = raw.Gate
 	}
 	for _, f := range []struct {
 		key string
@@ -151,6 +159,7 @@ func configKeys() []configKey {
 	d := defaultSettings()
 	return []configKey{
 		{"harness", d.Harness, "harness of a worker whose role and spawner name none: " + strings.Join(local.Harnesses(), ", ")},
+		{"gate", d.Gate, "gate of a new solo session: open, or closed (other teams and solos neither see nor mail it, and it sees none of them); a solo or a team's gate changes it later with agent action=gate_close / gate_open"},
 		{"gc.closed_after", formatRetention(d.GCClosedAfter), "gc a team closed longer than this, with its run logs (14d, 36h, or off)"},
 		{"gc.archive_keep", formatRetention(d.GCArchiveKeep), "delete gc archives older than this (30d, or off)"},
 		{"display.columns", "[" + strings.Join(d.Columns, ", ") + "]",
@@ -354,6 +363,9 @@ func ConfigStatus(dir string) string {
 	var diff []string
 	if set.Harness != d.Harness {
 		diff = append(diff, "harness "+set.Harness)
+	}
+	if set.Gate != d.Gate {
+		diff = append(diff, "gate "+set.Gate)
 	}
 	if set.GCClosedAfter != d.GCClosedAfter {
 		diff = append(diff, "gc.closed_after "+formatRetention(set.GCClosedAfter))

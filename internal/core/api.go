@@ -50,6 +50,8 @@ type Engine struct {
 	abortPush func(participantID string) int
 	// soloLimits are the limits of a solo (WithSoloTemplate).
 	soloLimits map[string]int
+	// soloGateClosed: a new solo's gate starts closed (WithDefaultGate).
+	soloGateClosed bool
 	// templates resolves a team.found template name (WithTemplates).
 	templates func(name, cwd string) (string, error)
 	// templateList lists the templates found for a cwd (WithTemplateList).
@@ -236,6 +238,7 @@ type Presence struct {
 	Gate         bool   `json:"gate"`           // member: the team's gate; solo: always
 	GateName     string `json:"gate_name,omitempty"`
 	Admittable   bool   `json:"admittable,omitempty"`
+	Closed       bool   `json:"gate_closed,omitempty"` // the caller's own line: its gate is closed
 }
 
 // Who line kinds.

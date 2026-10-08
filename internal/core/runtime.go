@@ -229,6 +229,8 @@ const (
 	AgentTemplates = "templates"
 	AgentClose     = "close"
 	AgentReopen    = "reopen"
+	AgentGateClose = "gate_close"
+	AgentGateOpen  = "gate_open"
 )
 
 // AgentArgs is the `agent` tool. Fields by action:

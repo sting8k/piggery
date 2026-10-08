@@ -34,6 +34,6 @@ func soloCard(p participant, taskforces []string) string {
 		" the team is rooted at your directory and you become its gate. When asked to reopen a closed team rooted" +
 		" at your directory, use " + p.toolPrefix + "agent action=reopen team=<name>." +
 		// The guide is not installed as a harness skill (it would go stale): the model asks for it.
-		callTaskforceText(p.toolPrefix, taskforces) +
+		gateText(p.toolPrefix) + callTaskforceText(p.toolPrefix, taskforces) +
 		" For the rest of piggery (templates, workers, shell commands), run `piggery skills`.\n"
 }

@@ -23,6 +23,8 @@ type txn struct {
 	ctx  context.Context
 	now  int64    // unix ms
 	solo manifest // the implicit manifest of a solo (teamManifest(""))
+	// soloClosed: a new solo's gate starts closed (Engine.soloGateClosed).
+	soloClosed bool
 	// shared is the Engine's sharedPrompts.
 	shared func(template, role string) string
 	// taskforces lists the taskforces a cwd can call, one line each (the cards of a solo and a gate).
@@ -53,7 +55,7 @@ func (e *Engine) inTx(ctx context.Context, fn func(t *txn) error) error {
 			return internal(err)
 		}
 		defer tx.Rollback()
-		if err := fn(&txn{Tx: tx, ctx: ctx, now: now, solo: e.soloManifest(), shared: e.sharedPrompts, taskforces: e.taskforceLines}); err != nil {
+		if err := fn(&txn{Tx: tx, ctx: ctx, now: now, solo: e.soloManifest(), soloClosed: e.soloGateClosed, shared: e.sharedPrompts, taskforces: e.taskforceLines}); err != nil {
 			return err
 		}
 		if err := tx.Commit(); err != nil {
