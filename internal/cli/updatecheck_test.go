@@ -25,7 +25,7 @@ func TestDailyUpdateCheck(t *testing.T) {
 		fmt.Fprint(w, `{"tag_name":"v9.9.9"}`)
 	}))
 	defer api.Close()
-	dir, err := os.MkdirTemp("/tmp", "pg") // short: unix socket paths are limited on macOS
+	dir, err := os.MkdirTemp(shortTmp(), "pg") // short: unix socket paths are limited on macOS
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +41,7 @@ func TestDailyUpdateCheck(t *testing.T) {
 		defer func() { cancel(); <-done }()
 		for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(50 * time.Millisecond) {
 			var out, errOut bytes.Buffer
-			if Main(dir, []string{"ps", "--view"}, &out, &errOut) == 0 {
+			if Main(dir, []string{"ps", "--view", "--no-start"}, &out, &errOut) == 0 {
 				var d struct{ Daemon struct{ Update string } }
 				if err := json.Unmarshal(out.Bytes(), &d); err != nil {
 					t.Fatal(err)

@@ -86,12 +86,7 @@ func TestCodexHelperProcess(t *testing.T) {
 func newCodexDriver(t *testing.T, prof CodexProfile) (*Driver, string) {
 	t.Helper()
 	dir := t.TempDir()
-	wrapper := filepath.Join(dir, "codex")
-	script := fmt.Sprintf("#!/bin/sh\nexec %q -test.run='^TestCodexHelperProcess$' -- \"$@\"\n", os.Args[0])
-	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	prof.Cmd = wrapper
+	prof.Cmd = useFakeHarness(t, "TestCodexHelperProcess")
 	b, _ := json.Marshal(prof)
 	os.MkdirAll(filepath.Dir(CodexProfilePath(dir)), 0o700)
 	if err := os.WriteFile(CodexProfilePath(dir), b, 0o600); err != nil {

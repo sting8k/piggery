@@ -2,7 +2,9 @@ package view
 
 import (
 	"fmt"
+	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
 	"time"
@@ -17,6 +19,7 @@ import (
 // one), sleeping by creation, and a directory takes its best bucket. Contact that is not a turn (a
 // reconnect, a daemon restart) neither wakes a directory nor moves it.
 func TestGroupByDir(t *testing.T) {
+	skipSlashPaths(t)
 	now := time.UnixMilli(1_000_000_000_000)
 	ago := func(d time.Duration) int64 { return now.Add(-d).UnixMilli() }
 	h := time.Hour
@@ -87,11 +90,34 @@ func TestGroupByDir(t *testing.T) {
 	}
 }
 
+func skipSlashPaths(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("the fixture's paths are unix paths; TestRootsAndRelCwdFollowTheOSSeparator covers Windows ones")
+	}
+}
+
+// A root holds a cwd and a cwd is shown relative to its directory whatever the OS separator is.
+func TestRootsAndRelCwdFollowTheOSSeparator(t *testing.T) {
+	root := t.TempDir()
+	sub := filepath.Join(root, "a", "b")
+	if got := deepestRoot(sub, []string{filepath.Dir(root), root}); got != filepath.Clean(root) {
+		t.Fatalf("deepestRoot = %q; want %q", got, root)
+	}
+	if got := RelCwd(root, sub); got != "./a/b" {
+		t.Fatalf("RelCwd = %q; want ./a/b", got)
+	}
+	if got := deepestRoot(sub+"x", []string{sub}); got != sub+"x" {
+		t.Fatalf("deepestRoot of a sibling with the same prefix = %q; want itself", got)
+	}
+}
+
 // A taskforce is listed in its caller's directory, right after the caller's unit (a solo, or the team
 // of the member that called it up), a step in, whatever its own root; one whose caller is not
 // listed (another tab, never known) stays a unit of its own directory. A closed taskforce is not in
 // All (it cannot be reopened), only in the Closed tab; a closed ordinary team is in both.
 func TestTaskforceUnderCaller(t *testing.T) {
+	skipSlashPaths(t)
 	now := time.UnixMilli(1_000_000_000_000)
 	ago := func(d time.Duration) int64 { return now.Add(-d).UnixMilli() }
 	h := time.Hour
@@ -145,6 +171,7 @@ func TestTaskforceUnderCaller(t *testing.T) {
 // A tab is named by its directory's last element; only directories whose names clash get parent
 // elements, until they differ.
 func TestTabLabels(t *testing.T) {
+	skipSlashPaths(t)
 	dirs := []string{"/w/a/api", "/w/b/api", "/w/web", "/"}
 	gs := make([]DirGroup, len(dirs))
 	for i, d := range dirs {

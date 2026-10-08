@@ -15,7 +15,7 @@ import (
 // An admin-only verb runs as admin without -a; in a participant's shell (PIGGERY_ID/TOKEN set) it
 // is refused unless -a is given, never silently turned into admin.
 func TestAdminOnlyVerbWithoutA(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pg") // short: unix socket paths are limited on macOS
+	dir, err := os.MkdirTemp(shortTmp(), "pg") // short: unix socket paths are limited on macOS
 	if err != nil {
 		t.Fatal(err)
 	}

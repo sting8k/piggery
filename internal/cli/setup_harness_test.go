@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -17,10 +18,16 @@ import (
 // TestMain lets this test binary stand in for `claude` (fakeClaude) and `paseo` (fakePaseo) when
 // a test puts it on PATH under that name.
 func TestMain(m *testing.M) {
-	if log := os.Getenv("PIGGERY_FAKE_CLAUDE"); log != "" && filepath.Base(os.Args[0]) == "claude" {
+	// A test that autostarts a daemon would run this binary as `serve`, which a test binary takes
+	// for a whole test run, detached: on Windows its image stays locked until go cannot delete it.
+	if len(os.Args) > 1 && os.Args[1] == "serve" {
+		fmt.Fprintln(os.Stderr, "the cli test binary was started as a daemon: a test dialed with autostart (use --no-start)")
+		os.Exit(3)
+	}
+	if log := os.Getenv("PIGGERY_FAKE_CLAUDE"); log != "" && strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "claude" {
 		os.Exit(fakeClaude(log, os.Args[1:]))
 	}
-	if log := os.Getenv("PIGGERY_FAKE_PASEO"); log != "" && filepath.Base(os.Args[0]) == "paseo" {
+	if log := os.Getenv("PIGGERY_FAKE_PASEO"); log != "" && strings.TrimSuffix(filepath.Base(os.Args[0]), ".exe") == "paseo" {
 		os.Exit(fakePaseo(log, os.Args[1:]))
 	}
 	os.Exit(m.Run())
@@ -30,6 +37,10 @@ func TestMain(m *testing.M) {
 // ~/.claude.json (mcpServers, like Claude) and ~/fake-claude.json (marketplaces and plugins,
 // listed with --json). Installing copies the plugin, as Claude does. argv goes to log.
 func fakeClaude(log string, args []string) int {
+	if len(args) == 1 && args[0] == "--version" { // setup asks (Windows); not a change to Claude, so not logged
+		fmt.Println("2.1.283 (Claude Code)")
+		return 0
+	}
 	f, _ := os.OpenFile(log, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	f.WriteString(strings.Join(args, " ") + "\n")
 	f.Close()
@@ -125,9 +136,8 @@ func changes(t *testing.T, log string) []string {
 // the Human's other MCP servers are kept. Without claude on PATH: a clear error.
 func TestSetupClaudeInstallRemove(t *testing.T) {
 	home, bin := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", home)
-	exe, _ := os.Executable()
-	os.Symlink(exe, filepath.Join(bin, "claude"))
+	setHome(t, home)
+	linkExe(t, bin, "claude")
 	t.Setenv("PATH", bin)
 	log := filepath.Join(home, "argv")
 	t.Setenv("PIGGERY_FAKE_CLAUDE", log)
@@ -187,7 +197,7 @@ func TestSetupClaudeInstallRemove(t *testing.T) {
 // the daemon's update only moves forward; a directory piggery does not manage is refused.
 func TestSetupPiInstallRemove(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
@@ -274,7 +284,7 @@ func TestSetupPiInstallRemove(t *testing.T) {
 // a newer binary, remove takes it out, and a directory that is not piggery's is never replaced.
 func TestSetupOmpInstallRemove(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	t.Setenv("PI_CONFIG_DIR", "")
 	t.Setenv("PATH", t.TempDir())
@@ -324,7 +334,7 @@ func TestSetupOmpInstallRemove(t *testing.T) {
 // untouched, and status says when the row is missing.
 func TestSetupDshInstallRemove(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("DSH_HOME", "")
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
@@ -341,7 +351,7 @@ func TestSetupDshInstallRemove(t *testing.T) {
 		!strings.Contains(string(got), local.DshEntry(dir)) || !strings.Contains(string(got), "sessions: '"+local.DshSessionsDir(dir)+"'") {
 		t.Fatalf("home patch after install: %v\n%s", err, got)
 	}
-	if st, _ := os.Stat(patch); st.Mode().Perm() != 0o644 {
+	if st, _ := os.Stat(patch); !permIs(st.Mode().Perm(), 0o644) {
 		t.Fatalf("mode %v: the user's file mode changed", st.Mode())
 	}
 	if msg, _ := installDsh(dir); !strings.Contains(msg, "already") {
@@ -406,7 +416,7 @@ func oldMarker(t *testing.T, file string) {
 // copy; remove neither makes nor restores one.
 func TestSetupBackupOnce(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("DSH_HOME", "")
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
@@ -420,7 +430,7 @@ func TestSetupBackupOnce(t *testing.T) {
 	os.WriteFile(patch, []byte(before), 0o644)
 	msg, err := installDsh(dir)
 	got, _ := os.ReadFile(backup)
-	if st, serr := os.Stat(backup); err != nil || serr != nil || string(got) != before || st.Mode().Perm() != 0o600 || !strings.Contains(msg, backup) {
+	if st, serr := os.Stat(backup); err != nil || serr != nil || string(got) != before || !permIs(st.Mode().Perm(), 0o600) || !strings.Contains(msg, backup) {
 		t.Fatalf("backup: %q %v %v\n%s", msg, err, serr, got)
 	}
 	// the Human edits the file after piggery came in; a second run and an upgrade keep the backup
@@ -446,7 +456,7 @@ func TestSetupBackupOnce(t *testing.T) {
 // gone again, not left as `{}`.
 func TestSetupPiExtRoundTrip(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")
@@ -485,7 +495,7 @@ func TestSetupPiExtRoundTrip(t *testing.T) {
 // that is not plain JSON (opencode.jsonc) is never written: nothing is, and the line to add is printed.
 func TestSetupOpencodeInstallRemove(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("PATH", t.TempDir())
 	dir := filepath.Join(home, ".piggery")

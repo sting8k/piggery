@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/sting8k/piggery/internal/core"
@@ -31,8 +30,8 @@ type Client struct {
 // Dial connects to the daemon in dir. When autostart is set and the connect fails, it starts
 // `<this binary> serve` detached (log: dir/serve.log) once, then retries with backoff.
 func Dial(dir string, autostart bool) (*Client, error) {
-	sock := server.SocketPath(dir)
-	conn, err := net.Dial("unix", sock)
+	sock := server.Address(dir)
+	conn, err := server.Dial(dir)
 	if err != nil && autostart {
 		exited, serr := startDaemon(dir)
 		if serr != nil {
@@ -44,7 +43,7 @@ func Dial(dir string, autostart bool) (*Client, error) {
 			case why := <-exited:
 				// serve ended: another daemon won the lock (connect works), or it could not start
 				// (say why, not "no such file").
-				if conn, err = net.Dial("unix", sock); err != nil {
+				if conn, err = server.Dial(dir); err != nil {
 					return nil, fmt.Errorf("the daemon did not start: %s (log: %s)", why, serveLog(dir))
 				}
 			case <-time.After(delay):
@@ -52,7 +51,7 @@ func Dial(dir string, autostart bool) (*Client, error) {
 			if conn != nil {
 				break
 			}
-			if conn, err = net.Dial("unix", sock); err == nil {
+			if conn, err = server.Dial(dir); err == nil {
 				break
 			}
 			delay = min(delay*2, 500*time.Millisecond)
@@ -150,7 +149,7 @@ func startDaemon(dir string) (exited <-chan string, err error) {
 	}
 	cmd := exec.Command(exe, "serve")
 	cmd.Stdout, cmd.Stderr = logf, logf
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	detach(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}

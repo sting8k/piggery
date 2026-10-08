@@ -17,11 +17,14 @@ jobs:
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash # Git Bash on Windows too: one syntax, and the shell expands the globs
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,10 +36,26 @@ jobs:
         with:
           node-version: 22
       - run: go vet ./...
-      - run: go test -race ./...
-      - run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
+      - name: Go tests
+        if: runner.os != 'Windows'
+        run: go test -race ./...
+      # Windows proves the Windows code: no -race (a slow cgo build; the other two catch races), and
+      # Git for Windows' sh, ps, sleep and coreutils off PATH, so a test cannot pass by borrowing a
+      # tool a user's Windows lacks. git itself stays (Git\cmd).
+      - name: Go tests (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch '\\Git\\(usr|bin|mingw64)' }) -join ';'
+          Get-Command sh, ps, sleep, ls -CommandType Application -ErrorAction SilentlyContinue | Format-Table Name, Source
+          go test ./...
+      - name: Node tests
+        if: ${{ !cancelled() }} # a failed Go step must not hide these
+        run: node --test extensions/pi/*.test.mjs extensions/omp/*.test.mjs extensions/dsh/*.test.mjs extensions/opencode/*.test.mjs
       - name: Paseo plugin
+        if: ${{ !cancelled() }}
         working-directory: extensions/paseo
         run: npm ci --ignore-scripts && npm run typecheck && npm test
       - name: govulncheck
+        if: ${{ !cancelled() }}
         run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...

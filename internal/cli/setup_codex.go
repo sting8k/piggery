@@ -196,7 +196,7 @@ func mergeCodexHooks(old []byte, path, self string) ([]byte, []string, error) {
 			}
 		}
 		g, _ := json.Marshal(map[string]any{"hooks": []any{map[string]any{
-			"type": "command", "command": local.ShellQuote(self) + " hook codex " + event, "timeout": timeout}}})
+			"type": "command", "command": codexHookCommand(self, event), "timeout": timeout}}})
 		return append(kept, g)
 	})
 	if err != nil {
@@ -525,7 +525,7 @@ func codexStatus(home, self string) harnessState {
 			for i, g := range doc.Hooks[ev.name] {
 				if isPiggeryCodexGroup(g) {
 					keys = append(keys, fmt.Sprintf("%s:%s:%d:0", hooksPath, ev.key, i))
-					stale = stale || !bytes.Contains(g, jsonobj.String(local.ShellQuote(self)+" hook codex "+ev.name))
+					stale = stale || !bytes.Contains(g, jsonobj.String(codexHookCommand(self, ev.name)))
 				}
 			}
 		}

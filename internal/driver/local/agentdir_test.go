@@ -43,8 +43,8 @@ func TestBuildAgentDir(t *testing.T) {
 	}
 	write(t, filepath.Join(src, "settings.json"), `{
 		"theme": "x",
-		"extensions": ["rel/ext-x.ts", "~/tools/pi-askuserquestion.ts", "`+filepath.Join(repo, "extensions", "pi")+`",
-			"`+filepath.Join(home, "wt", "pi", "index.ts")+`"],
+		"extensions": ["rel/ext-x.ts", "~/tools/pi-askuserquestion.ts", `+js(filepath.Join(repo, "extensions", "pi"))+`,
+			`+js(filepath.Join(home, "wt", "pi", "index.ts"))+`],
 		"packages": ["npm:@scope/blocked-npm@1.2.3", "git:github.com/u/blocked-git@v1", {"source": "npm:ok-pkg", "skills": ["s"]},
 			"./local/blocked-local", "github.com/u/kept-local"]}`)
 
@@ -106,7 +106,7 @@ func TestBuildAgentDirFreshMachine(t *testing.T) {
 // is then the human's ~/.pi/agent, never a generated dir.
 func TestHumanAgentDirIgnoresAGeneratedDir(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	root := AgentDirRoot(filepath.Join(home, ".piggery"))
 	t.Setenv("PI_CODING_AGENT_DIR", filepath.Join(root, "p1", "r1"))
 	if got := HumanAgentDir(root); got != filepath.Join(home, ".pi", "agent") {
@@ -137,7 +137,7 @@ func TestBuildOmpAgentDir(t *testing.T) {
 	yml := "theme: dark\nmcp:\n  enableProjectConfig: true\nextensions:\n  - rel/ext-x.ts\n  - " +
 		filepath.Join(home, "wt", "omp", "index.ts") + "\n  - " + filepath.Join(home, "tools", "a.ts") + "\n"
 	write(t, filepath.Join(src, "config.yml"), yml)
-	write(t, filepath.Join(src, "settings.json"), `{"extensions": ["rel/ext-y.ts", "`+filepath.Join(home, "tools", "a.ts")+`"]}`)
+	write(t, filepath.Join(src, "settings.json"), `{"extensions": ["rel/ext-y.ts", `+js(filepath.Join(home, "tools", "a.ts"))+`]}`)
 	before, _ := os.ReadFile(filepath.Join(src, "config.yml"))
 
 	dst := filepath.Join(home, "gen", "r1")
@@ -205,4 +205,10 @@ func TestOmpSessionsAreFoundAfterTheMove(t *testing.T) {
 	if _, err := os.Stat(old); err != nil {
 		t.Fatalf("a worker that has sessions in the new place had the old ones moved over them: %v", err)
 	}
+}
+
+// js is s as a JSON string (a Windows path holds backslashes).
+func js(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
 }

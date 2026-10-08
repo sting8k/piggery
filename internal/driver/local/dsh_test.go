@@ -76,12 +76,7 @@ func TestDshHelperProcess(t *testing.T) {
 func newDshDriver(t *testing.T, mode string, prof DshProfile, opts ...Options) (*Driver, string) {
 	t.Helper()
 	dir := t.TempDir()
-	wrapper := filepath.Join(t.TempDir(), "dsh") // not in dir: DshExtDir(dir) is the plugin copy
-	script := fmt.Sprintf("#!/bin/sh\nexec %q -test.run='^TestDshHelperProcess$' -- \"$@\"\n", os.Args[0])
-	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	prof.Cmd = wrapper
+	prof.Cmd = useFakeHarness(t, "TestDshHelperProcess")
 	b, _ := json.Marshal(prof)
 	os.MkdirAll(filepath.Dir(DshProfilePath(dir)), 0o700)
 	if err := os.WriteFile(DshProfilePath(dir), b, 0o600); err != nil {
@@ -138,8 +133,16 @@ func TestDshStart(t *testing.T) {
 			t.Fatalf("a dsh frame is in the log: %s", r)
 		}
 	}
-	_, recs = waitRecord(t, d, "p1", "agent_end")
+	waitRecord(t, d, "p1", "agent_end")
 	var ends, texts int
+	// The fixture is read line by line: wait for its last agent_end, not the first.
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		recs, _ = d.Tail("p1", 0)
+		if ends = countType(recs, "agent_end"); ends >= 3 || time.Now().After(deadline) {
+			break
+		}
+	}
+	ends = 0
 	for _, r := range recs {
 		var m struct {
 			Type    string
@@ -253,4 +256,15 @@ func TestDshWorkerCopy(t *testing.T) {
 	if _, err := EnsureDshWorker(other, nil); err == nil {
 		t.Error("a directory that is not piggery's was replaced")
 	}
+}
+
+func countType(recs []json.RawMessage, typ string) int {
+	n := 0
+	for _, r := range recs {
+		var m struct{ Type string }
+		if json.Unmarshal(r, &m) == nil && m.Type == typ {
+			n++
+		}
+	}
+	return n
 }

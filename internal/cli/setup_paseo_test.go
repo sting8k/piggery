@@ -55,8 +55,7 @@ func fakePaseo(log string, args []string) int {
 // writes it again. Without paseo on PATH the status line is only a hint.
 func TestSetupPaseoInstallRemove(t *testing.T) {
 	dir, bin := t.TempDir(), t.TempDir()
-	exe, _ := os.Executable()
-	os.Symlink(exe, filepath.Join(bin, "paseo"))
+	linkExe(t, bin, "paseo")
 	t.Setenv("PATH", bin)
 	log := filepath.Join(t.TempDir(), "argv")
 	t.Setenv("PIGGERY_FAKE_PASEO", log)

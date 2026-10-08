@@ -191,7 +191,7 @@ func newOmpDriver(t *testing.T, mode string, opts Options) (*Driver, string) {
 	t.Setenv("PGDRV_HELPER", mode)
 	t.Setenv("PGDRV_OMP_FIXTURES", abs)
 	t.Setenv("PIGGERY_DISABLED", "1")
-	t.Setenv("HOME", t.TempDir())
+	setHome(t, t.TempDir())
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	t.Setenv("OMP_PROFILE", "work") // a named profile of the daemon's own: it must not reach the worker
 	t.Setenv("PI_PROFILE", "work")

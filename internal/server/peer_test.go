@@ -2,10 +2,7 @@ package server
 
 import (
 	"fmt"
-	"net"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"testing"
 
 	"github.com/sting8k/piggery/internal/driver/local"
@@ -17,7 +14,7 @@ func TestHostNeedsPeerInItsTree(t *testing.T) {
 	self := os.Getpid()
 	host := func(pid int) string { return fmt.Sprintf("claude:%d:%d", pid, local.ProcessStartTime(pid)) }
 
-	other := exec.Command("sleep", "30") // a live process the test is not a descendant of
+	other := liveProcess() // a live process the test is not a descendant of
 	if err := other.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -32,15 +29,19 @@ func TestHostNeedsPeerInItsTree(t *testing.T) {
 		t.Fatal("a host with another start time (a reused pid) was accepted")
 	}
 
-	// The peer pid read from the socket is the connecting process.
-	sock := filepath.Join(t.TempDir(), "s")
-	ln, err := net.Listen("unix", sock)
+	// The peer pid read from the daemon's listener is the connecting process.
+	dir, err := os.MkdirTemp("", "pg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	ln, err := Listen(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer ln.Close()
 	go func() {
-		if c, err := net.Dial("unix", sock); err == nil {
+		if c, err := Dial(dir); err == nil {
 			defer c.Close()
 			c.Read(make([]byte, 1))
 		}

@@ -4,14 +4,16 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fakeDaemonPath } from "../testutil/daemon.mjs";
 import { Client } from "./client.mjs";
 
 test("a run.stale answer to any call stops the client for good", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "pgc"));
-	const path = join(dir, "s.sock");
+	const path = fakeDaemonPath(dir);
 	let connections = 0;
 	// Identify succeeds; every later call is answered as from a superseded run.
 	const server = net.createServer((c) => {
+		c.on("error", () => {}); // a client that has gone makes a write fail (EPIPE on a Windows pipe): not the fake's concern
 		connections++;
 		let buf = "";
 		c.on("data", (d) => {

@@ -28,7 +28,7 @@ import (
 var Version = "dev"
 
 // latestRelease is the GitHub API URL of the newest release (the release workflow names its
-// assets: piggery-<os>-<arch> and checksums.txt).
+// assets: piggery-<os>-<arch>, with .exe on Windows, and checksums.txt).
 const latestRelease = "https://api.github.com/repos/sting8k/piggery/releases/latest"
 
 // maxDownload bounds a downloaded binary or checksums file.
@@ -50,8 +50,17 @@ type release struct {
 	} `json:"assets"`
 }
 
-// asset is the release asset called name (the binary for a platform is piggery-<os>-<arch>, with
-// no version, so releases/latest/download/piggery-<os>-<arch> is a stable install URL).
+// assetName is the binary of a platform in a release: piggery-<os>-<arch>, with .exe on Windows
+// and no version, so releases/latest/download/<name> is a stable install URL.
+func assetName(goos, goarch string) string {
+	name := fmt.Sprintf("piggery-%s-%s", goos, goarch)
+	if goos == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+// asset is the release asset called name.
 func (r release) asset(name string) (string, bool) {
 	for _, a := range r.Assets {
 		if a.Name == name {
@@ -107,10 +116,10 @@ func (u updater) get(ctx context.Context, url string) ([]byte, error) {
 }
 
 // install downloads r's binary for this platform, checks its sha256 against checksums.txt and
-// replaces the running binary atomically (a temp file in its directory, then rename). A bad
-// checksum or any failure leaves the binary as it was.
+// replaces the running binary (a temp file in its directory, then putBinary). A bad checksum or
+// any failure leaves the binary as it was.
 func (u updater) install(ctx context.Context, r release) error {
-	name := fmt.Sprintf("piggery-%s-%s", u.goos, u.goarch)
+	name := assetName(u.goos, u.goarch)
 	binURL, ok := r.asset(name)
 	if !ok {
 		return fmt.Errorf("release %s has no %s (no build for %s/%s)", r.Tag, name, u.goos, u.goarch)
@@ -176,7 +185,29 @@ func (u updater) install(ctx context.Context, r release) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), exe)
+	return putBinary(tmp.Name(), exe, u.goos)
+}
+
+// putBinary moves the new binary tmp to exe. A rename replaces a binary atomically, running or not,
+// everywhere but on Windows: a running program can be renamed there, not replaced or deleted. So
+// there the old binary steps aside first, as exe+".old" (in place of the one an earlier update
+// left), and stays until the next update or until someone deletes it.
+func putBinary(tmp, exe, goos string) error {
+	if goos != "windows" {
+		return os.Rename(tmp, exe)
+	}
+	old := exe + ".old"
+	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("cannot remove %s, which an earlier update left (a daemon of that version may still run: piggery shutdown): %w", old, err)
+	}
+	if err := os.Rename(exe, old); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, exe); err != nil {
+		os.Rename(old, exe) // back where it was: nothing replaced
+		return err
+	}
+	return nil
 }
 
 // run is `update`: --check prints the versions only; else it installs the latest release unless

@@ -125,8 +125,12 @@ func RelCwd(dir, cwd string) string {
 	if cwd == "" || cwd == dir {
 		return ""
 	}
-	if rel, err := filepath.Rel(dir, cwd); err == nil && rel != ".." && !strings.HasPrefix(rel, "../") {
-		return "./" + rel
+	if rel, err := filepath.Rel(dir, cwd); err == nil {
+		if rel = filepath.ToSlash(rel); rel == "." { // the same directory spelled another way (/w and \w)
+			return ""
+		} else if rel != ".." && !strings.HasPrefix(rel, "../") {
+			return "./" + rel
+		}
 	}
 	return Home(cwd)
 }
@@ -137,8 +141,10 @@ func RelCwd(dir, cwd string) string {
 func ShortPaths(paths []string) []string {
 	parts := make([][]string, len(paths))
 	n := make([]int, len(paths))
+	full := make([]string, len(paths)) // the path as shown; "/" and "\\" spell one path
 	for i, p := range paths {
-		parts[i] = strings.Split(Home(p), "/")
+		full[i] = filepath.ToSlash(Home(p))
+		parts[i] = strings.Split(full[i], "/")
 		n[i] = 2
 	}
 	short := func(i int) string {
@@ -153,7 +159,7 @@ func ShortPaths(paths []string) []string {
 		clash := make([]bool, len(paths))
 		for i := range paths {
 			for j := range paths {
-				if i != j && Home(paths[i]) != Home(paths[j]) && short(i) == short(j) {
+				if i != j && full[i] != full[j] && short(i) == short(j) {
 					clash[i] = true
 				}
 			}

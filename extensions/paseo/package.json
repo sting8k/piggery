@@ -6,7 +6,7 @@
   "files": ["paseo-plugin.json", "index.client.tsx", "index.server.ts", "client/", "server/", "shared/"],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "node --test 'test/**/*.test.ts'"
+    "test": "node --test \"test/**/*.test.ts\""
   },
   "devDependencies": {
     "@getpaseo/client": "0.9.1",

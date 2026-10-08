@@ -4,10 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -19,7 +15,9 @@ import (
 // (same source and resolution as Start: `ps lstart`, 1s) + program name. The full argv is not
 // comparable: pi rewrites process.title, so the OS shows `node …/bin/pi <args>` right after exec
 // and only `pi` a moment later. The program name is the basename of the first command token, or
-// of the second when an interpreter runs a script (node <script>).
+// of the second when an interpreter runs a script (node <script>). Windows keeps no argv: there the
+// recorded program is the live image's path, read at Start (startedProgram), because a command
+// started through a shim (pi.cmd) runs as the shim's interpreter, not under its own name.
 
 // Inspect reports whether p's process is dead, still ours, or a reused pid.
 func (d *Driver) Inspect(ctx context.Context, p core.Proc) (core.ProcState, error) {
@@ -42,34 +40,6 @@ func (d *Driver) Inspect(ctx context.Context, p core.Proc) (core.ProcState, erro
 	return core.ProcOurs, nil
 }
 
-// psInfo reads the OS start time (unix ms) and command of pid. alive=false when ps reports no
-// such process; err when the process table could not be read.
-func psInfo(ctx context.Context, pid int) (start int64, command string, alive bool, err error) {
-	out, err := exec.CommandContext(ctx, "ps", "-ww", "-o", "lstart=,command=", "-p", strconv.Itoa(pid)).Output()
-	var ee *exec.ExitError
-	if errors.As(err, &ee) && ee.ExitCode() == 1 && len(strings.TrimSpace(string(out))) == 0 {
-		return 0, "", false, nil // ps: no such process
-	}
-	if err != nil {
-		return 0, "", false, fmt.Errorf("read process table: %w", err)
-	}
-	f := strings.Fields(string(out))
-	if len(f) < 6 {
-		return 0, "", false, fmt.Errorf("read process table: unexpected ps output %q", out)
-	}
-	t, err := time.ParseInLocation(lstartLayout, strings.Join(f[:5], " "), time.Local)
-	if err != nil {
-		return 0, "", false, fmt.Errorf("read process table: %w", err)
-	}
-	return t.UnixMilli(), strings.Join(f[5:], " "), true, nil
-}
-
-func sameProgram(command, recorded string) bool {
-	name := filepath.Base(recorded)
-	tok := strings.Fields(command)
-	return len(tok) > 0 && (filepath.Base(tok[0]) == name || (len(tok) > 1 && filepath.Base(tok[1]) == name))
-}
-
 // KillVerified is terminate for a worker that is not our child (after a daemon restart): SIGTERM
 // to its group, then SIGKILL to the group and its tree, only while Inspect says it is still ours,
 // re-checking before each signal. A dead or reused pid is never signalled.
@@ -80,10 +50,15 @@ func (d *Driver) KillVerified(ctx context.Context, p core.Proc) (core.Exit, erro
 	}
 	sent := ""
 	var tree []proc
-	for _, step := range []struct {
+	type stepT struct {
 		sig  syscall.Signal
 		wait time.Duration
-	}{{syscall.SIGTERM, d.opts.TermWait}, {syscall.SIGKILL, 5 * time.Second}} {
+	}
+	steps := []stepT{{syscall.SIGKILL, 5 * time.Second}}
+	if hasTerm { // an OS with no SIGTERM goes straight to the kill
+		steps = append([]stepT{{syscall.SIGTERM, d.opts.TermWait}}, steps...)
+	}
+	for _, step := range steps {
 		st, err := d.Inspect(ctx, p)
 		if err != nil {
 			return core.Exit{}, err

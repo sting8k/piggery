@@ -9,6 +9,7 @@ require (
 	charm.land/bubbletea/v2 v2.0.10
 	charm.land/fang/v2 v2.0.1
 	charm.land/lipgloss/v2 v2.0.6
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/charmbracelet/x/exp/charmtone v0.0.0-20250603201427-c31516f43444
 	github.com/charmbracelet/x/term v0.2.2

@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -271,8 +269,8 @@ var sharedAppServer = func(host string) bool {
 	if name != "codex" {
 		return false
 	}
-	out, err := exec.Command("ps", "-o", "args=", "-p", pid).Output()
-	return err == nil && slices.Contains(strings.Fields(string(out)), "app-server")
+	n, _ := strconv.Atoi(pid)
+	return slices.Contains(processArgs(n), "app-server")
 }
 
 // processHost names the harness process a session lives in, "<name>:<pid>:<start time>" (start
@@ -288,18 +286,17 @@ func processHost(pid int, names ...string) string {
 		if pid <= 1 {
 			return ""
 		}
-		out, err := exec.Command("ps", "-o", "ppid=,comm=", "-p", strconv.Itoa(pid)).Output()
-		f := strings.Fields(string(out))
-		if err != nil || len(f) < 2 {
+		ppid, name, ok := parentAndName(pid)
+		if !ok {
 			return ""
 		}
-		if name := filepath.Base(strings.Join(f[1:], " ")); slices.Contains(names, name) {
+		if slices.Contains(names, name) {
 			if st := local.ProcessStartTime(pid); st != 0 {
 				return fmt.Sprintf("%s:%d:%d", name, pid, st)
 			}
 			return ""
 		}
-		pid, _ = strconv.Atoi(f[0])
+		pid = ppid
 	}
 	return ""
 }

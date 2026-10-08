@@ -57,6 +57,10 @@ func (e *env) setup(args []string) error {
 			return err
 		}
 	}
+	// Windows: the file the Node clients read the daemon's pipe name from (nothing on unix).
+	if err := server.WritePipeFile(e.dir); err != nil {
+		return err
+	}
 	switch {
 	case *outdated:
 		return e.updateOutdated(o)

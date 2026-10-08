@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -74,13 +75,16 @@ func TestIntegrationVersionsFollowWhatIsInstalled(t *testing.T) {
 		version int
 		digest  string
 	}{
-		{"pi", 9, "2e1f5c55d53b"},
-		{"omp", 9, "96f5e9e5a6e0"},
-		{"dsh", 10, "02bd0c2b3d1b"},
+		{"pi", 10, "6013b375700b"},
+		{"omp", 10, "9c316fa63b55"},
+		{"dsh", 11, "f19f76256fca"},
 		{"claude", 1, "ca51aeba0c80"},
 		{"codex", 1, "c914fad6023c"},
-		{"paseo", 3, "93664ce8a897"},
+		{"paseo", 4, "489ba22e2c79"},
 	} {
+		if runtime.GOOS == "windows" && (want.name == "claude" || want.name == "codex") {
+			continue // their hook commands are written in another form there (hookcmd_windows.go): the unix run holds the digest
+		}
 		if got := digestOf(trees[want.name]()); got != want.digest || local.IntegrationVersion(want.name) != want.version {
 			t.Errorf("changed %s: bump IntegrationVersion and update this digest (now v%d %s; table has v%d %s)",
 				want.name, local.IntegrationVersion(want.name), got, want.version, want.digest)
@@ -118,7 +122,7 @@ func digestOf(files map[string][]byte) string {
 // "not installed" while ps, top and the daemon log said "claude (v0 < v1)".
 func TestClaudeLeftoverFilesAreNotAnInstall(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	dir := filepath.Join(home, ".piggery")
 	if err := writeClaudePlugin(filepath.Join(dir, "claude"), "/x/piggery"); err != nil {

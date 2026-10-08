@@ -195,7 +195,12 @@ func (c *claudeCodec) launch(s core.Spec) (launch, error) {
 	if effort != "" {
 		args = append(args, "--effort", effort)
 	}
-	args = append(args, "--append-system-prompt", s.RoleCard+fmt.Sprintf(ClaudeWorkerChannel, ClaudeToolPrefix))
+	card, err := claudeCardArgs(filepath.Dir(settings), s.RoleCard+fmt.Sprintf(ClaudeWorkerChannel, ClaudeToolPrefix))
+	if err != nil {
+		os.RemoveAll(filepath.Dir(settings))
+		return launch{}, err
+	}
+	args = append(args, card...)
 	args = append(args, prof.Args...)
 	return launch{
 		cmd:      prof.Cmd,

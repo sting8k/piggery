@@ -7,13 +7,13 @@ import { piggeryPath } from "../server/installed.ts";
 import { pickBin, realDir, runPiggery } from "../server/piggery.ts";
 import { foldsOf, goneOpen, NO_FOLDS, prune, setGone, setTab, setTeam, teamOpen } from "../shared/folds.ts";
 import { RPC_NAMES, viewSettings } from "../shared/rpc.ts";
-import { readView, related, VIEW_VERSION } from "../shared/view.ts";
+import { readView, related, sameDir, VIEW_VERSION } from "../shared/view.ts";
 
 test("RPC names are ones Paseo accepts (one bad name fails the whole plugin)", () => {
   for (const name of RPC_NAMES) assert.match(name, /^[a-z][a-z0-9._-]*$/);
 });
 
-test("runPiggery always passes --no-start and says why piggery gave nothing", async () => {
+test("runPiggery always passes --no-start and says why piggery gave nothing", { skip: process.platform === "win32" && "its fake piggery is a sh script" }, async () => {
   const dir = mkdtempSync(join(tmpdir(), "piggery-paseo-"));
   const fake = (name: string, body: string) => {
     const path = join(dir, name);
@@ -54,7 +54,7 @@ test("components take text sizes and weights from the text roles only", () => {
   }
 });
 
-test("a workspace reached through a symlink matches the directory piggery recorded", async () => {
+test("a workspace reached through a symlink matches the directory piggery recorded", { skip: process.platform === "win32" && "a symlink needs a privilege on Windows, and the plugin compares paths by /" }, async () => {
   const base = realpathSync(mkdtempSync(join(tmpdir(), "piggery-paseo-")));
   mkdirSync(join(base, "shop"));
   symlinkSync(join(base, "shop"), join(base, "link"));
@@ -64,6 +64,14 @@ test("a workspace reached through a symlink matches the directory piggery record
   assert.equal(related("/w", "/w/api"), true, "around it");
   assert.equal(related("/w/ap", "/w/api"), false, "a prefix is not a parent");
   assert.equal(await realDir(join(base, "nowhere")), join(base, "nowhere"));
+});
+
+test("a Windows directory matches its workspace whatever the separator and the case", () => {
+  assert.equal(related("C:\\w\\api", "C:\\w\\api\\web"), true, "inside it");
+  assert.equal(related("C:\\w", "c:/W/api"), true, "around it, written the other way");
+  assert.equal(related("C:\\w\\ap", "C:\\w\\api"), false, "a prefix is not a parent");
+  assert.equal(sameDir("C:\\w\\Api\\", "c:/w/api"), true);
+  assert.equal(related("/w/a\\b", "/w/a/b"), false, "in a unix path a backslash is a letter of a name");
 });
 
 test("it reads ps --view of the version it knows and refuses another, saying which way", () => {

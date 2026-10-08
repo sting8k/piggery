@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,7 +19,7 @@ import (
 // participants (one host each), a tool call acts as the thread its _meta.sessionId names, and a call
 // without it is refused instead of acting as another thread (issue #4).
 func TestSharedAppServerThreads(t *testing.T) {
-	dir, err := os.MkdirTemp("/tmp", "pg") // short: unix socket paths are limited on macOS
+	dir, err := os.MkdirTemp(shortTmp(), "pg") // short: unix socket paths are limited on macOS
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,9 +47,11 @@ func TestSharedAppServerThreads(t *testing.T) {
 	t.Setenv("PIGGERY_DISABLED", "")
 
 	e := &env{dir: dir, stdout: io.Discard}
-	cwdA, cwdB := t.TempDir(), t.TempDir()
+	// The daemon keeps a cwd with its short (8.3) names resolved, as Windows temp dirs have them.
+	cwdA, _ := filepath.EvalSymlinks(t.TempDir())
+	cwdB, _ := filepath.EvalSymlinks(t.TempDir())
 	for _, th := range []struct{ session, cwd string }{{"thread-a", cwdA}, {"thread-b", cwdB}} {
-		e.runHook("codex", "SessionStart", strings.NewReader(`{"session_id":"`+th.session+`","source":"startup","cwd":"`+th.cwd+`"}`), io.Discard)
+		e.runHook("codex", "SessionStart", strings.NewReader(fmt.Sprintf(`{"session_id":%q,"source":"startup","cwd":%s}`, th.session, mustJSON(th.cwd))), io.Discard)
 	}
 
 	s := &mcpServer{dir: dir, host: hostID, harness: "codex", shared: true, sessions: map[string]*mcpServer{}, out: io.Discard}

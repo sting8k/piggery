@@ -163,7 +163,7 @@ func TestGCArchivesThenDeletesOnlyClosedTeams(t *testing.T) {
 		t.Fatalf("gc: %+v %v", res, err)
 	}
 	g := res.Teams[0]
-	if st, err := os.Stat(g.Archive); err != nil || st.Mode().Perm() != 0o600 || filepath.Dir(g.Archive) != f.dir {
+	if st, err := os.Stat(g.Archive); err != nil || !permIs(st.Mode().Perm(), 0o600) || filepath.Dir(g.Archive) != f.dir {
 		t.Fatalf("archive file: %v %v", st, err)
 	}
 	lines, err := core.ReadArchive(g.Archive)
