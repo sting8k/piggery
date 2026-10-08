@@ -27,6 +27,22 @@ Windows (experimental, amd64 and arm64):
 - **The Paseo view matches a Windows workspace** to the directories under it (paths were compared
   by `/` and by case). Integration version: paseo 4; `piggery setup --outdated` updates it.
 
+## v0.9.1 - 2026-10-07
+
+A pi session no longer misses mail that arrives just as it finishes a reply.
+
+After upgrading, run `piggery restart`: the daemon updates the pi integration it installed to 9
+(omp to 9 and dsh to 10, which share its adapter file and behave as before). Then restart the pi
+sessions that were open, or run `/reload` in them.
+
+- Fix: mail that reached a pi session at the very end of a reply was shown to the model, and pi
+  went on working with it, but piggery took the turn as finished. Mail sent after that waited,
+  unannounced, until pi stopped for good or the model checked its inbox. The turn now stays open
+  while pi works on that mail, so later mail is steered in as usual and nothing is acked before
+  the model has read it.
+- Fix: a stopped worker no longer leaves an empty directory under `~/.piggery/run/`. Existing
+  empty ones go when `piggery gc` removes their worker.
+
 ## v0.9.0 - 2026-10-06
 
 A session can call up a taskforce for one job, a team's gate stays with its founder, and `lead-peer`, `dual-lens` and `advisor` join the built-in templates.

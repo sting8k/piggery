@@ -1,6 +1,22 @@
-# Piggery 🐖 - Lợn cày tasks
+<h1 align="center">🐖 Piggery</h1>
 
-Your coding agents are pigs. Piggery is the farm.
+<p align="center">
+  <strong>Your coding agents are pigs. Piggery is the farm.</strong><br>
+  <em>Lợn cày tasks</em>
+</p>
+
+<p align="center">
+  <a href="https://github.com/sting8k/piggery/releases/latest"><img src="https://img.shields.io/github/v/release/sting8k/piggery?label=release" alt="Latest release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
+
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="docs/guide.md">Guide</a> ·
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
+
+https://github.com/user-attachments/assets/0b4871d7-96ec-4262-a8cc-3373800ba68d
 
 Work goes into a pig's trough and waits there until the pig is back. It only counts as eaten
 when the job is actually done, not when the pig sniffed at it. Every pig also has a pen: its

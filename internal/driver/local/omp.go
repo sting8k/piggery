@@ -82,7 +82,7 @@ func (c ompCodec) launch(s core.Spec) (launch, error) {
 		return launch{}, fmt.Errorf("worker agent dir: %w", err)
 	}
 	fail := func(err error) (launch, error) {
-		os.RemoveAll(agentDir)
+		removeRun(agentDir)
 		return launch{}, err
 	}
 	overlay := filepath.Join(agentDir, "piggery-worker.yml")
@@ -114,7 +114,7 @@ func (c ompCodec) launch(s core.Spec) (launch, error) {
 		// Empty, not unset (the runner sets keys): omp reads an empty OMP_PROFILE as the default profile.
 		env:      []string{"PI_CODING_AGENT_DIR=" + agentDir, "OMP_PROFILE=", "PI_PROFILE="},
 		thinking: thinking,
-		cleanup:  func() { os.RemoveAll(agentDir) },
+		cleanup:  func() { removeRun(agentDir) },
 	}, nil
 }
 

@@ -15,6 +15,8 @@ export class Turns {
 	 * @param {(event: string) => Promise<any>} io.presence presence events with no standard event
 	 * @param {(text: string, steer: boolean) => void} io.deliver shows mail to the model
 	 * @param {() => string} io.newKey a fresh turn key
+	 * @param {() => boolean} [io.pending] input is queued in the harness (pi: a queued steer makes
+	 *   the run go on past before_settle); a harness without it settles whatever is queued
 	 * @param {(err: Error) => void} io.onError
 	 */
 	constructor(io) {
@@ -29,6 +31,7 @@ export class Turns {
 		this.running = false;
 		this.held = false; // a wake came after this run's turn ended, before pi settled
 		this.ended = []; // turn_ends the daemon did not get (it was down), oldest first
+		this.unread = false; // mail was steered in and no model turn has started since
 	}
 
 	enqueue(fn) {
@@ -50,8 +53,16 @@ export class Turns {
 
 	async give(args, steer) {
 		const r = await this.io.event(args);
-		if (r?.text) this.io.deliver(r.text, steer);
+		if (r?.text) {
+			this.io.deliver(r.text, steer);
+			if (steer) this.unread = true;
+		}
 		return r;
+	}
+
+	/** A model turn starts inside the run (pi's turn_start): mail steered before it is in it. */
+	modelTurn() {
+		this.unread = false;
 	}
 
 	agentStart() {
@@ -78,6 +89,10 @@ export class Turns {
 		const o = OUTCOME[outcome];
 		if (!key || !o) return this.q;
 		return this.enqueue(async () => {
+			// Input still queued (mail steered at the last boundary, or the Human typed): pi runs on
+			// with it in this same turn, so this is not its end; the next before_settle is. Should
+			// pi settle instead, settled() ends the turn interrupted (no ack, the mail comes again).
+			if (this.io.pending && (this.unread || this.io.pending())) return;
 			try {
 				const r = await this.io.event({ event: "turn_end", prompt_id: key, outcome: o });
 				if (r?.block && r.text) {
