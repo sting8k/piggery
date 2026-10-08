@@ -24,21 +24,21 @@ test("a redelivered mail says so, whatever its age", () => {
 test("who: own team in full, one line per other team and per solo, admittable marked", () => {
 	const out = renderWho(
 		[
-			{ kind: "member", id: "1", name: "lead", role: "peer", state: "idle", team: "web", gate: true },
+			{ kind: "member", id: "1", name: "lead", role: "peer", state: "idle", team: "web", gate: true, gate_closed: true },
 			{ kind: "member", id: "2", name: "w1", role: "peer", state: "working", team: "web", gate: false },
 			{ kind: "team", id: "t2", name: "api", cwd: "/r/api", gate_name: "api-lead" },
-			{ kind: "solo", id: "3", name: "pi-ab12", cwd: "/r/web", state: "idle", gate: true, admittable: true },
+			{ kind: "solo", id: "3", name: "pi-ab12", cwd: "/r/web", state: "idle", gate: true, admittable: true, gate_closed: true },
 		],
 		"1",
 	).split("\n");
 	assert.deepEqual(out, [
 		"Your team web:",
-		"  lead (peer) idle [gate] (you)",
+		"  lead (peer) idle [gate] [gate closed] (you)",
 		"  w1 (peer) working",
 		"Other teams (write to the team name; it reaches the gate):",
 		"  api (root /r/api) gate api-lead",
 		"Solo sessions (each is its own gate):",
-		"  pi-ab12 (cwd /r/web) idle [admittable]",
+		"  pi-ab12 (cwd /r/web) idle [admittable] [gate closed]",
 	]);
 });
 

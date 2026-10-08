@@ -223,7 +223,7 @@ func Run(ctx context.Context, cfg Config) error {
 		runtimes[i] = core.WithRuntime(d)
 	}
 	s.eng = core.New(db, append(runtimes, core.WithNotify(s.wake),
-		core.WithDefaultHarness(settings.Harness), core.WithAllowedRoots(settings.AllowedRoots),
+		core.WithDefaultHarness(settings.Harness), core.WithDefaultGate(settings.Gate == "closed"), core.WithAllowedRoots(settings.AllowedRoots),
 		core.WithSharedPrompts(promptsFor(s.dir, settings.Prompts, func(m string) { s.log.Warn("shared prompts", "problem", m) })), core.WithNotifySink(s.notifyHook),
 		core.WithTemplates(func(name, _ string) (string, error) { return manifests.Resolve(name, s.dir) }),
 		core.WithTemplateList(func(string) ([]core.TemplateRef, error) {

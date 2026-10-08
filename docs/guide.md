@@ -175,6 +175,18 @@ leaves the team; then the member that joined next whose role has `send` takes ov
 A session can leave a team by founding a new one: its workers and unread mail move to the team's
 gate.
 
+### Closing your gate
+
+When unrelated projects share a machine, their sessions see and can mail each other. A solo session,
+or a team's gate, can close its gate when you ask (`agent action=gate_close`; `gate_open` undoes it).
+A closed gate is closed both ways: other teams and solos do not see it in `who` and cannot mail it
+(the send fails as if the name did not exist), and it sees and mails none of them (its send says the
+gate is closed). Mail that was already waiting from other teams or solos is held, not lost or
+acknowledged, and arrives when the gate opens. A taskforce and the session that called it reach each
+other whatever either gate says, and inside a team nothing changes. A team founded by a closed
+session, its taskforces, and a team it reopens are closed too. To start every new solo session closed,
+set `gate: closed` in `config.yaml`.
+
 ## A member that is gone gets its mail
 
 A member of an open team whose session you closed is `gone`. Mail for it does not wait for you to

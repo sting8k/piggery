@@ -67,7 +67,7 @@ export function renderWho(ps, selfId) {
 	if (members.length) {
 		out.push(`Your team ${members[0].team}:`);
 		for (const p of members)
-			out.push(`  ${p.name} (${p.role}) ${p.state}${p.gate ? " [gate]" : ""}${p.id === selfId ? " (you)" : ""}${id(p)}`);
+			out.push(`  ${p.name} (${p.role}) ${p.state}${p.gate ? " [gate]" : ""}${p.gate_closed ? " [gate closed]" : ""}${p.id === selfId ? " (you)" : ""}${id(p)}`);
 	}
 	if (teams.length) {
 		out.push("Other teams (write to the team name; it reaches the gate):");
@@ -76,7 +76,7 @@ export function renderWho(ps, selfId) {
 	if (solos.length) {
 		out.push("Solo sessions (each is its own gate):");
 		for (const p of solos)
-			out.push(`  ${p.name} (cwd ${p.cwd}) ${p.state}${p.admittable ? " [admittable]" : ""}${p.id === selfId ? " (you)" : ""}${id(p)}`);
+			out.push(`  ${p.name} (cwd ${p.cwd}) ${p.state}${p.admittable ? " [admittable]" : ""}${p.gate_closed ? " [gate closed]" : ""}${p.id === selfId ? " (you)" : ""}${id(p)}`);
 	}
 	return out.join("\n") || "Nobody else is on piggery.";
 }

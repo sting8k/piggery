@@ -57,7 +57,9 @@ It only reads unless the task says it may edit.
 Only when the Human asks: `found` (start a team from a template, rooted at your directory; you
 become its gate and stay in it), `admit` (take a solo session at your team's root into a role you may
 spawn), `close` with no team (the gate closes its own team; you become solo), `reopen` (a solo at a
-closed team's root opens it again and becomes its gate). In pi these are `piggery_agent` actions.
+closed team's root opens it again and becomes its gate), `gate_close` / `gate_open` (a solo, or a team's gate:
+closed, other teams and solos neither see nor mail you and you see none of them, except a taskforce you called;
+mail already waiting from them is held until you open it). In pi these are `piggery_agent` actions.
 
 **Changing a worker's model** (only when the Human asks you to; it is an admin command, so it
 needs `--admin` in your shell):

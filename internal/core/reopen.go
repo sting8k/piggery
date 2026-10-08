@@ -25,6 +25,7 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 	}
 	var res AgentResult
 	var wake string
+	var wakes []string
 	err = e.inTx(ctx, func(t *txn) error {
 		p, err := t.callerGranted(c, "agent.reopen", "agent")
 		if err != nil {
@@ -72,6 +73,9 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 		}
 		old, hasOld, err := t.oldGate(teamID)
 		if err != nil {
+			return err
+		}
+		if err := t.inheritGate(teamID, p); err != nil { // the reopener's gate, before it moves in
 			return err
 		}
 		if _, err := t.ExecContext(t.ctx, `UPDATE teams SET closed_at=NULL WHERE id=?`, teamID); err != nil {
@@ -152,6 +156,19 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 			return internal(fmt.Errorf("reopen: gate is %q, want %s", now.id, gate.id))
 		}
 		payload["gate"], payload["messages"], payload["workers"] = gate.id, msgs, workers
+		// Mail held (or not) for the team's old state follows the new one.
+		gateShut, err := t.unitClosed(teamID, "")
+		if err != nil {
+			return err
+		}
+		if gateShut {
+			_, err = t.holdOutsideMail(teamID, "")
+		} else {
+			wakes, _, err = t.releaseOutsideMail(teamID, "")
+		}
+		if err != nil {
+			return err
+		}
 		if err := t.event(evt{typ: "team_up", participant: gate.id, team: teamID, ref: teamID, payload: payload}); err != nil {
 			return err
 		}
@@ -168,6 +185,9 @@ func (e *Engine) reopen(ctx context.Context, c Caller, a AgentArgs) (AgentResult
 	}
 	if wake != "" {
 		e.notifyAfterCommit(wake)
+	}
+	for _, id := range wakes {
+		e.notifyAfterCommit(id)
 	}
 	return res, nil
 }

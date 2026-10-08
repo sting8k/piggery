@@ -222,7 +222,7 @@ func TestEnsureConfigKeepsTheUsers(t *testing.T) {
 	if err != nil || set.GCClosedAfter != 7*24*time.Hour || set.GCArchiveKeep != defaultSettings().GCArchiveKeep {
 		t.Fatalf("after adding %v: %+v, %v\n%s", added, set, err, b)
 	}
-	if !slices.Equal(added, []string{"harness", "gc.archive_keep", "display.columns", "spawn.allowed_roots", "update.check", "prompts"}) || !strings.Contains(string(b), "    archive_keep: 30d") {
+	if !slices.Equal(added, []string{"harness", "gate", "gc.archive_keep", "display.columns", "spawn.allowed_roots", "update.check", "prompts"}) || !strings.Contains(string(b), "    archive_keep: 30d") {
 		t.Fatalf("added %v:\n%s", added, b)
 	}
 	if again, _, _ := EnsureConfig(dir); again != nil {

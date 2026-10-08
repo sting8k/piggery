@@ -133,15 +133,22 @@ func psLines(r proto.PsResult, now time.Time, stats map[string]view.Stats, cols 
 						caller = "  caller=" + h.Caller
 					}
 				}
-				out = append(out, psLine{kind: "team", text: fmt.Sprintf("  %s%s %s%s  gate=%s  held=%d unacked=%d%s",
-					in, word, t.Name, tpl, cmp.Or(t.Gate, "(none)"), t.Held, t.Unacked, caller)})
+				shut := ""
+				if t.GateClosed {
+					shut = " [closed]"
+				}
+				out = append(out, psLine{kind: "team", text: fmt.Sprintf("  %s%s %s%s  gate=%s%s  held=%d unacked=%d%s",
+					in, word, t.Name, tpl, cmp.Or(t.Gate, "(none)"), shut, t.Held, t.Unacked, caller)})
 			}
 			for _, row := range b.Rows {
 				switch row.Kind {
 				case view.KindSolo:
 					s := solos[row.ID]
-					out = append(out, psLine{kind: "solo", text: strings.TrimRight(fmt.Sprintf("    %-22s%s %s", "solo "+row.Name, fields(vals(row)),
-						protocolTag(s.ProtocolVersion, r.ProtocolVersion)), " ")})
+					tags := protocolTag(s.ProtocolVersion, r.ProtocolVersion)
+					if s.GateClosed {
+						tags = strings.TrimSpace("[gate closed] " + tags)
+					}
+					out = append(out, psLine{kind: "solo", text: strings.TrimRight(fmt.Sprintf("    %-22s%s %s", "solo "+row.Name, fields(vals(row)), tags), " ")})
 				case view.KindMember:
 					m := members[row.ID]
 					var tags []string

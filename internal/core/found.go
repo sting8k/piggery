@@ -77,6 +77,9 @@ func (e *Engine) found(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 		if err != nil {
 			return err
 		}
+		if err := t.inheritGate(team.ID, p); err != nil { // the founder's gate, before it moves in
+			return err
+		}
 		if p.team == "" { // a solo moves in
 			if _, err := t.ExecContext(t.ctx, `UPDATE participants SET team_id=?, role=?, joined_at=? WHERE id=?`,
 				team.ID, role, t.now, p.id); err != nil {
