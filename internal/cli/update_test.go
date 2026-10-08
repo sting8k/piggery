@@ -18,7 +18,7 @@ import (
 // one in checksums.txt is refused and the running binary stays; the right one replaces it (the
 // asset for this os/arch, through a symlink to the binary, keeping its mode).
 func TestUpdate(t *testing.T) {
-	skipOnWindows(t, "piggery update for Windows is a later step: no Windows asset, and a running .exe cannot be replaced in place")
+	skipOnWindows(t, "replaces the binary through a symlink and checks its mode bits (TestUpdateOnWindowsMovesTheOldBinaryAside is the Windows path)")
 	newBin, otherBin := []byte("piggery v0.2.0 linux arm64"), []byte("piggery v0.2.0 darwin arm64")
 	sum := func(b []byte) string { s := sha256.Sum256(b); return hex.EncodeToString(s[:]) }
 	sums := sum(otherBin) + "  piggery-darwin-arm64\n" + sum(newBin) + "  piggery-linux-arm64\n"
@@ -86,5 +86,55 @@ func TestUpdate(t *testing.T) {
 	}
 	if st, _ := os.Stat(exe); st.Mode().Perm() != 0o750 {
 		t.Fatalf("mode %v; want the old binary's 0750", st.Mode().Perm())
+	}
+}
+
+// On Windows the asset is piggery-windows-<arch>.exe, and the binary it replaces (which may be
+// running: Windows lets a running program be renamed, not replaced) steps aside as piggery.exe.old,
+// where the next update replaces it. goos is the updater's, so every OS runs this.
+func TestUpdateOnWindowsMovesTheOldBinaryAside(t *testing.T) {
+	bins := map[string][]byte{"v0.2.0": []byte("piggery v0.2.0 windows amd64"), "v0.3.0": []byte("piggery v0.3.0 windows amd64")}
+	tag := "v0.2.0"
+	mux := http.NewServeMux()
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	mux.HandleFunc("/latest", func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{"tag_name": tag, "assets": []map[string]string{
+			{"name": "piggery-windows-amd64", "browser_download_url": srv.URL + "/noext"},
+			{"name": "piggery-windows-amd64.exe", "browser_download_url": srv.URL + "/exe"},
+			{"name": "checksums.txt", "browser_download_url": srv.URL + "/sums"},
+		}})
+	})
+	mux.HandleFunc("/exe", func(w http.ResponseWriter, _ *http.Request) { w.Write(bins[tag]) })
+	mux.HandleFunc("/sums", func(w http.ResponseWriter, _ *http.Request) {
+		s := sha256.Sum256(bins[tag])
+		io.WriteString(w, hex.EncodeToString(s[:])+"  piggery-windows-amd64.exe\n")
+	})
+
+	dir := t.TempDir()
+	exe := filepath.Join(dir, "piggery.exe")
+	if err := os.WriteFile(exe, []byte("piggery v0.1.0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := Version
+	defer func() { Version = old }()
+	u := updater{api: srv.URL + "/latest", exe: exe, goos: "windows", goarch: "amd64", client: srv.Client()}
+	for _, step := range []struct{ from, to, aside string }{
+		{"v0.1.0", "v0.2.0", "piggery v0.1.0"},
+		{"v0.2.0", "v0.3.0", "piggery v0.2.0 windows amd64"},
+	} {
+		Version, tag = step.from, step.to
+		if replaced, err := u.run(context.Background(), io.Discard, false, false); err != nil || !replaced {
+			t.Fatalf("update to %s = %v, %v", step.to, replaced, err)
+		}
+		if b, _ := os.ReadFile(exe); string(b) != string(bins[step.to]) {
+			t.Fatalf("after the update to %s the binary is %q", step.to, b)
+		}
+		if b, _ := os.ReadFile(exe + ".old"); string(b) != step.aside {
+			t.Fatalf("after the update to %s piggery.exe.old is %q; want the binary it replaced", step.to, b)
+		}
+		if ents, _ := os.ReadDir(dir); len(ents) != 2 {
+			t.Fatalf("after the update to %s: %d files; want the binary and the one moved aside", step.to, len(ents))
+		}
 	}
 }

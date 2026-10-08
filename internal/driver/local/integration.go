@@ -14,7 +14,7 @@ var integrationVersions = map[string]int{
 	"opencode": 7,
 	"claude":   1,
 	"codex":    1,
-	"paseo":    3,
+	"paseo":    4,
 }
 
 // IntegrationMarker precedes the integer in what is installed.

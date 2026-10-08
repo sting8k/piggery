@@ -161,7 +161,7 @@ func TestClaudeStart(t *testing.T) {
 	if dis := flag("--disallowedTools"); dis != "SendMessage AskUserQuestion" { // the profile's list minus the role's allow_tools
 		t.Fatalf("--disallowedTools %q", dis)
 	}
-	if sp := flag("--append-system-prompt"); !strings.HasPrefix(sp, "You are w1.") || !strings.Contains(sp, "mcp__piggery__inbox") {
+	if sp := claudeCard(t, args); !strings.HasPrefix(sp, "You are w1.") || !strings.Contains(sp, "mcp__piggery__inbox") {
 		t.Fatalf("system prompt %q: want the role card, then the piggery channel", sp)
 	}
 	var mcp struct {
@@ -225,6 +225,27 @@ func TestClaudeStart(t *testing.T) {
 		t.Fatalf("resume args = %v", env["args"])
 	}
 	d.Stop(ctx, "p1")
+}
+
+// A role card longer than a Windows command line may be (32,767 characters; a card that carries
+// the user's own rules can be longer) still starts the worker, and reaches it whole.
+func TestClaudeStartsWithARoleCardLongerThanACommandLine(t *testing.T) {
+	setHome(t, t.TempDir())
+	d, dir := newClaudeDriver(t, ClaudeProfile{})
+	ctx := context.Background()
+	card := "You are w1.\n" + strings.Repeat("One more rule of the house.\n", 2000) // 56 KB
+	if _, err := d.Start(ctx, core.Spec{ParticipantID: "p1", RunID: "r1", Token: "tok", Cwd: dir, HarnessRef: "sess-1", RoleCard: card}); err != nil {
+		t.Fatal(err)
+	}
+	defer d.Stop(ctx, "p1")
+	env, _ := waitRecord(t, d, "p1", "probe_env")
+	var args []string
+	for _, a := range env["args"].([]any) {
+		args = append(args, a.(string))
+	}
+	if got := claudeCard(t, args); !strings.HasPrefix(got, card) {
+		t.Fatalf("the worker got %d bytes of role card starting %.40q; want all %d", len(got), got, len(card))
+	}
 }
 
 // Claude runs a lower effort than asked without saying: the driver checks the level

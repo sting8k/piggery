@@ -129,7 +129,8 @@ type worker struct {
 	inMu  sync.Mutex // serializes stdin writes (replies, control commands) with its close (stop)
 	stdin *os.File
 	// inBroken: a write ran past sendWait, maybe after part of its line (a pipe write over
-	// PIPE_BUF is not atomic), so the harness's JSON stream is broken; later sends fail at once.
+	// PIPE_BUF is not atomic), so the harness's JSON stream is broken; later sends fail at once
+	// and nothing else is written.
 	inBroken bool
 
 	pendMu  sync.Mutex
@@ -580,7 +581,9 @@ func (d *Driver) normalize(w *worker, r io.ReadCloser) {
 			}
 			if rec.reply != nil {
 				w.inMu.Lock()
-				w.stdin.Write(append(rec.reply, '\n')) // fails harmlessly once stdin is closed
+				if !w.inBroken { // a write given up on may still be in the pipe's way (writeWithin)
+					w.stdin.Write(append(rec.reply, '\n')) // fails harmlessly once stdin is closed
+				}
 				w.inMu.Unlock()
 			}
 		}
@@ -622,8 +625,7 @@ func (w *worker) send(v any) error {
 	if w.inBroken {
 		return errors.New("worker stdin is broken: an earlier write timed out mid-line; stop the worker")
 	}
-	w.stdin.SetWriteDeadline(time.Now().Add(sendWait))
-	if _, err := w.stdin.Write(append(line, '\n')); err != nil {
+	if err := writeWithin(w.stdin, append(line, '\n'), sendWait); err != nil {
 		if errors.Is(err, os.ErrDeadlineExceeded) {
 			w.inBroken = true
 			slog.Warn("worker stdin write timed out; its stdin is now broken, later commands fail",

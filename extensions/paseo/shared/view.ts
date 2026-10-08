@@ -189,10 +189,25 @@ export function readView(doc: Record<string, unknown> | null | undefined): ReadV
   return { ok: true, view: doc as unknown as View };
 }
 
+/**
+ * A directory as it is compared: nothing after its last name, and for a Windows path (C:\w, \\host\w)
+ * "/" between names and no case, since C:\w\Api and c:/w/api are one directory there. In a unix path
+ * a backslash is a letter of a name.
+ */
+function comparable(path: string): string {
+  if (/^[A-Za-z]:[\\/]|^\\\\/.test(path)) path = path.replace(/\\/g, "/").toLowerCase();
+  return path.replace(/\/+$/, "");
+}
+
+/** Whether two paths name one directory. */
+export function sameDir(path: string, dir: string): boolean {
+  return comparable(path) === comparable(dir);
+}
+
 /** Whether a directory piggery lists is the workspace's, inside it, or around it. */
 export function related(path: string, dir: string): boolean {
-  const a = path.replace(/\/+$/, "");
-  const b = dir.replace(/\/+$/, "");
+  const a = comparable(path);
+  const b = comparable(dir);
   return a === b || b.startsWith(a + "/") || a.startsWith(b + "/");
 }
 

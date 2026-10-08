@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { foldsOf, goneOpen as goneIsOpen, NO_FOLDS, prune, setGone, setTab, setTeam, teamOpen, type Folds } from "../shared/folds.ts";
 import { snapshot, viewSettings } from "../shared/rpc.ts";
-import { readView, related, type Block, type Column, type Dir, type EventRow, type Head, type Row, type View as PigView } from "../shared/view.ts";
+import { readView, related, sameDir, type Block, type Column, type Dir, type EventRow, type Head, type Row, type View as PigView } from "../shared/view.ts";
 import { DetailDialog, type Index } from "./dialog.tsx";
 import { Header } from "./header.tsx";
 import { Chip, statusColour } from "./kit/badge.tsx";
@@ -45,7 +45,7 @@ function indexOf(view: PigView): Index {
 function dirsOf(view: PigView, dir: string | undefined): Dir[] {
   if (dir === undefined) return view.all.dirs;
   const mine = view.all.dirs.filter((d) => related(d.path, dir));
-  const own = (d: Dir) => d.path.replace(/\/+$/, "") === dir.replace(/\/+$/, "");
+  const own = (d: Dir) => sameDir(d.path, dir);
   return [...mine.filter(own), ...mine.filter((d) => !own(d))];
 }
 

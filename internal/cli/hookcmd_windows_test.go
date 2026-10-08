@@ -11,3 +11,17 @@ func TestVersionAtLeast(t *testing.T) {
 		}
 	}
 }
+
+// Codex's hook command has no quote in it unless piggery's path needs one: a Codex that escapes the
+// quotes of a command (openai/codex #32402) runs none that has any.
+func TestCodexHookCommandQuotesOnlyAPathThatNeedsIt(t *testing.T) {
+	for self, want := range map[string]string{
+		`C:\Users\me\.local\bin\piggery.exe`:     `C:\Users\me\.local\bin\piggery.exe hook codex Stop`,
+		`C:\Users\Jo Doe\.local\bin\piggery.exe`: `"C:\Users\Jo Doe\.local\bin\piggery.exe" hook codex Stop`,
+		`C:\Tools (x86)\piggery.exe`:             `"C:\Tools (x86)\piggery.exe" hook codex Stop`,
+	} {
+		if got := codexHookCommand(self, "Stop"); got != want {
+			t.Errorf("codexHookCommand(%s) = %s, want %s", self, got, want)
+		}
+	}
+}
