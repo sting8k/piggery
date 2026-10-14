@@ -41,6 +41,10 @@ func underShimDir(s string) (rel string, ok bool) {
 			return s[len(d):], true
 		}
 	}
+	const bare = `%~dp0`
+	if len(s) > len(bare) && strings.EqualFold(s[:len(bare)], bare) {
+		return s[len(bare):], true
+	}
 	return "", false
 }
 
