@@ -174,7 +174,7 @@ func TestPsViewCarriesWhatTopSelects(t *testing.T) {
 		Solos:  []core.SoloState{{ID: "s", Name: "fern", Cwd: "/w/shop", State: "idle"}},
 		Closed: []core.ClosedTeam{{TeamState: core.TeamState{ID: "c", Name: "done", Root: "/w/shop", Members: []core.MemberState{{ID: "x", Name: "x", State: "gone"}}}, ClosedAt: time.Now().UnixMilli()}},
 	}}
-	top := &topModel{dir: t.TempDir(), ps: r, fold: topState{Teams: map[string]bool{}, Gone: map[string]bool{}}}
+	top := &topModel{dir: t.TempDir(), ps: r, saved: topState{Teams: map[string]bool{}, Gone: map[string]bool{}}}
 	raw, err := json.Marshal(viewDoc(r, nil, time.Now()))
 	if err != nil {
 		t.Fatal(err)

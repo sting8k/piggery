@@ -677,3 +677,116 @@ func TestTabSpan(t *testing.T) {
 		t.Fatalf("spans %q, want %q", got, want)
 	}
 }
+
+// newDragModel is a top with one team and its sidebar open, so the divider is drawn.
+func newDragModel(t *testing.T, dir string) *topModel {
+	ps := proto.PsResult{State: core.State{
+		Teams: []core.TeamState{{ID: "ta", Name: "a", Root: "/p/a", Members: []core.MemberState{{ID: "a1", Name: "a1"}}}}}}
+	m := newTopModel(nil, dir)
+	m.w, m.h = 120, 30
+	m.Update(fetched{ps: ps})
+	m.sel = "a1"
+	return m
+}
+
+// pressDivider presses the divider where the frame draws it, which starts a drag.
+func pressDivider(t *testing.T, m *topModel) {
+	t.Helper()
+	m.render()
+	sw, _ := m.sideSplit(m.w)
+	if h, ok := m.at(m.w-sw, 5); !ok || !h.divide {
+		t.Fatalf("no divider drawn at column %d", m.w-sw)
+	}
+	m.Update(tea.MouseClickMsg{X: m.w - sw, Y: 5, Button: tea.MouseLeft})
+	if !m.drag {
+		t.Fatal("a press on the divider did not start a drag")
+	}
+}
+
+// The sidebar's width follows the mouse, kept between sideMin and what leaves the list listMin; the
+// release saves the kept width. A drag that moved nothing saves nothing.
+func TestTopDragDividerResizesSidebar(t *testing.T) {
+	dir := t.TempDir()
+	m := newDragModel(t, dir)
+	pressDivider(t, m)
+	for _, c := range []struct{ to, want int }{{60, 60}, {0, 120 - listMin}, {115, sideMin}} {
+		m.Update(tea.MouseMotionMsg{X: c.to, Y: 5, Button: tea.MouseLeft})
+		if sw, _ := m.sideSplit(m.w); sw != c.want {
+			t.Fatalf("drag to %d: sidebar %d wide; want %d", c.to, sw, c.want)
+		}
+	}
+	m.Update(tea.MouseReleaseMsg{X: 115, Y: 5, Button: tea.MouseLeft})
+	if got := loadTopState(dir).Side; got != sideMin {
+		t.Fatalf("saved sidebar width %d; want the kept %d, not the mouse's", got, sideMin)
+	}
+
+	// A release lost outside the window: the next hover (no button) ends the drag and moves nothing.
+	pressDivider(t, m)
+	m.Update(tea.MouseMotionMsg{X: 30, Y: 5})
+	if m.drag || m.saved.Side != sideMin {
+		t.Fatalf("hover after a lost release: drag %v, side %d; want no drag, %d", m.drag, m.saved.Side, sideMin)
+	}
+
+	// A press and release without a move leave the file alone.
+	if err := os.Remove(topStatePath(dir)); err != nil {
+		t.Fatal(err)
+	}
+	pressDivider(t, m)
+	m.Update(tea.MouseReleaseMsg{X: 30, Y: 5, Button: tea.MouseLeft})
+	if _, err := os.Stat(topStatePath(dir)); !os.IsNotExist(err) {
+		t.Fatalf("a drag that moved nothing wrote the state file (stat err %v)", err)
+	}
+}
+
+// A drag draws at most one frame per dragFrame. A motion inside that gap changes the state and asks
+// for a tick; a tick inside the gap of the last frame draws nothing; a tick after the gap draws the
+// latest position; a motion after the gap draws at once.
+func TestTopDragFramePacing(t *testing.T) {
+	m := newDragModel(t, t.TempDir())
+	pressDivider(t, m)
+	m.Update(tea.MouseMotionMsg{X: 60, Y: 5, Button: tea.MouseLeft})
+	_ = m.View()
+	first := m.frame
+
+	_, cmd := m.Update(tea.MouseMotionMsg{X: 70, Y: 5, Button: tea.MouseLeft}) // inside the gap
+	if cmd == nil {
+		t.Fatal("a motion inside the gap asked for no tick: the last position would never be drawn")
+	}
+	_ = m.View()
+	if m.frame != first {
+		t.Fatal("a motion inside the gap drew a frame")
+	}
+	m.Update(tea.MouseMotionMsg{X: 80, Y: 5, Button: tea.MouseLeft}) // inside the gap too
+	m.Update(dragFrameMsg{})                                         // its tick, still inside the gap
+	_ = m.View()
+	if m.frame != first {
+		t.Fatal("a tick inside the gap of the last frame drew a frame")
+	}
+
+	m.drawn = time.Now().Add(-dragFrame) // the gap has passed
+	m.Update(dragFrameMsg{})
+	_ = m.View()
+	if m.frame == first {
+		t.Fatal("a tick after the gap did not draw the latest position")
+	}
+
+	before := m.frame
+	m.drawn = time.Now().Add(-dragFrame)
+	m.Update(tea.MouseMotionMsg{X: 60, Y: 5, Button: tea.MouseLeft})
+	_ = m.View()
+	if m.frame == before {
+		t.Fatal("a motion after the gap did not draw")
+	}
+}
+
+// Quitting in the middle of a drag keeps the width the drag reached.
+func TestTopQuitDuringDragKeepsWidth(t *testing.T) {
+	dir := t.TempDir()
+	m := newDragModel(t, dir)
+	pressDivider(t, m)
+	m.Update(tea.MouseMotionMsg{X: 60, Y: 5, Button: tea.MouseLeft})
+	m.Update(tea.KeyPressMsg{Text: "q"})
+	if got := loadTopState(dir).Side; got != 60 {
+		t.Fatalf("quit mid-drag saved width %d; want 60", got)
+	}
+}

@@ -39,21 +39,25 @@ var (
 
 func init() { usePalette(true) }
 
+// hexColor resolves a charmtone key once: charmtone.Key.RGBA builds its whole hex table on every call,
+// which a frame of styled cells would pay for thousands of times.
+func hexColor(k charmtone.Key) color.Color { return lipgloss.Color(k.Hex()) }
+
 // usePalette sets top's colours for a dark or light background: the one place they are chosen.
 // Pairs are (light, dark) as in fang; charmtone names as Crush and fang use them.
 func usePalette(dark bool) {
 	c := lipgloss.LightDark(dark)
-	colPrimary = charmtone.Charple
-	colLink = c(charmtone.Damson, charmtone.Malibu)
-	colSuccess = c(lipgloss.Color("#0CB37F"), charmtone.Guac) // fang's flag green
-	colMuted = charmtone.Squid
-	colWarning = c(charmtone.Tang, charmtone.Mustard) // Mustard is unreadable on a light background
-	colError = c(charmtone.Sriracha, charmtone.Cherry)
-	colSubtle = c(charmtone.Smoke, charmtone.Oyster)
-	colSurface = c(charmtone.Ash, charmtone.Charcoal)
-	colTool = charmtone.Dolly
-	colInk = charmtone.Pepper
-	colOnMain = charmtone.Butter
+	colPrimary = hexColor(charmtone.Charple)
+	colLink = c(hexColor(charmtone.Damson), hexColor(charmtone.Malibu))
+	colSuccess = c(lipgloss.Color("#0CB37F"), hexColor(charmtone.Guac)) // fang's flag green
+	colMuted = hexColor(charmtone.Squid)
+	colWarning = c(hexColor(charmtone.Tang), hexColor(charmtone.Mustard)) // Mustard is unreadable on a light background
+	colError = c(hexColor(charmtone.Sriracha), hexColor(charmtone.Cherry))
+	colSubtle = c(hexColor(charmtone.Smoke), hexColor(charmtone.Oyster))
+	colSurface = c(hexColor(charmtone.Ash), hexColor(charmtone.Charcoal))
+	colTool = hexColor(charmtone.Dolly)
+	colInk = hexColor(charmtone.Pepper)
+	colOnMain = hexColor(charmtone.Butter)
 	stTitle = lipgloss.NewStyle().Bold(true).Foreground(colPrimary)
 	stMuted = lipgloss.NewStyle().Foreground(colMuted)
 	stRule = lipgloss.NewStyle().Foreground(colSubtle)
@@ -123,6 +127,7 @@ const (
 	gap       = 2  // cells between columns
 	sideMin   = 40 // the sidebar is at least this wide ...
 	sideRight = 110
+	listMin   = 30 // the list keeps at least this wide when the sidebar is dragged wide
 	// ... and goes right of the list from this terminal width, below it under.
 )
 
@@ -307,6 +312,11 @@ func (m *topModel) render() string {
 	default: // no sidebar, or nothing to show in it
 		main = m.listBox(width, room, y, now)
 	}
+	if beside { // the divider between the list and the Overview: a press on it starts a drag
+		for i := range main {
+			m.hits = append(m.hits, hit{y: y + i, x0: width - sw, x1: width - sw + 1, divide: true})
+		}
+	}
 	frame := append(append(head, main...), foot...)
 	if m.pick != nil {
 		frame = m.overlay(frame, width)
@@ -321,6 +331,7 @@ type hit struct {
 	tab, id   string
 	side      int
 	list      bool
+	divide    bool   // the divider between the list and the sidebar: a press here starts a drag
 	pick      string // the Overview's model row of this worker: hover tints it, a click opens the picker
 	opt       string // a choice inside the open picker (m:<row>, l:<level>)
 }
@@ -906,9 +917,12 @@ func eventStyle(tone view.Tone) lipgloss.Style {
 
 // sideSplit is the width of the Overview panel and whether it is beside the list: the one split the
 // list | Overview columns and the band below them (notices | events) share.
-func (m *topModel) sideSplit(width int) (sw int, beside bool) {
-	return max(sideMin, width/3), m.sideShown() && m.sel != "" && !m.narrow()
+func (m *topModel) sideSplit(width int) (int, bool) {
+	return clampSide(cmp.Or(m.saved.Side, max(sideMin, width/3)), width), m.sideShown() && m.sel != "" && !m.narrow()
 }
+
+// clampSide keeps the sidebar at least sideMin wide and the list at least listMin.
+func clampSide(sw, width int) int { return min(max(sw, sideMin), width-listMin) }
 
 // band is the bottom of the screen above the keys: the notices (psResult.Notices: what the notify
 // hooks received) left, at the list's width, and the events right, at the Overview's, split where the

@@ -19,6 +19,8 @@ type topState struct {
 	Events bool `json:"events,omitempty"`
 	// Notices is true when the user opened the notices box (it starts folded to one line, like the events).
 	Notices bool `json:"notices,omitempty"`
+	// Side is the sidebar's width in cells as the user dragged its edge (0: the default, a third of the window).
+	Side int `json:"side,omitempty"`
 }
 
 func topStatePath(dir string) string { return filepath.Join(dir, "cache", "top.json") }
@@ -47,7 +49,7 @@ func saveTopState(dir string, s topState, known map[string]bool) {
 	if dir == "" {
 		return
 	}
-	out := topState{Teams: map[string]bool{}, Gone: map[string]bool{}, Events: s.Events, Notices: s.Notices}
+	out := topState{Teams: map[string]bool{}, Gone: map[string]bool{}, Events: s.Events, Notices: s.Notices, Side: s.Side}
 	for id, v := range s.Teams {
 		if known[id] {
 			out.Teams[id] = v
