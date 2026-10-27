@@ -14,6 +14,7 @@ package core
 import (
 	"database/sql"
 	"encoding/json"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -167,34 +168,75 @@ type SendArgs struct {
 	ReplyTo     string `json:"reply_to,omitempty"`
 	Op          string `json:"op,omitempty"` // "" | assign (to a member that reports to the sender)
 	ClientMsgID string `json:"client_msg_id,omitempty"`
+	CC          Names  `json:"cc,omitempty"` // more recipients of a copy (cc.go): optional, never fails the send
+}
+
+// Names is a list of names that also accepts one string ("a" or "a, b"): a harness that hands over
+// a string where a list is declared must not fail a send over it. Anything else is no names.
+type Names []string
+
+func (n *Names) UnmarshalJSON(b []byte) error {
+	*n = nil
+	var s string
+	if json.Unmarshal(b, &s) == nil {
+		*n = SplitNames(s)
+		return nil
+	}
+	var l []string
+	if json.Unmarshal(b, &l) == nil {
+		*n = l
+	}
+	return nil
+}
+
+// SplitNames splits a comma-separated list of names.
+func SplitNames(s string) Names {
+	var out Names
+	for _, f := range strings.Split(s, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 type SendResult struct {
-	ID        string `json:"id"`
-	Seq       int64  `json:"seq"`                 // what models and humans see (#N)
-	Duplicate bool   `json:"duplicate,omitempty"` // same (from, client_msg_id) seen: old id returned, nothing written
-	Held      bool   `json:"held,omitempty"`      // stored but held by a mail limit; not delivered until released
-	RuleID    string `json:"rule_id,omitempty"`   // the limit that held it
+	ID        string      `json:"id"`
+	Seq       int64       `json:"seq"`                  // what models and humans see (#N)
+	Duplicate bool        `json:"duplicate,omitempty"`  // same (from, client_msg_id) seen: old id returned, nothing written
+	Held      bool        `json:"held,omitempty"`       // stored but held by a mail limit; not delivered until released
+	RuleID    string      `json:"rule_id,omitempty"`    // the limit that held it
+	CcRefused []CcRefusal `json:"cc_refused,omitempty"` // cc names that got no copy; the send itself went
+}
+
+// CcRefusal is a cc name the sender chose that was left out, with the gate's rule and reason.
+type CcRefusal struct {
+	To     string `json:"to"`
+	RuleID string `json:"rule_id"`
+	Reason string `json:"reason"`
 }
 
 // Message is a stored message as seen by a reader. FromLabel is the engine-stamped header,
 // e.g. `alice (peer)` or `boss (supervisor, you report to them)`.
 type Message struct {
-	ID         string `json:"id"`
-	Seq        int64  `json:"seq"`
-	From       string `json:"from"`
-	FromName   string `json:"from_name"` // the sender's name (an address; ids are not shown)
-	FromLabel  string `json:"from_label"`
-	To         string `json:"to"`
-	Kind       string `json:"kind,omitempty"`
-	ReplyTo    string `json:"reply_to,omitempty"`
-	ReplyToSeq int64  `json:"reply_to_seq,omitempty"`
-	Op         string `json:"op,omitempty"`
-	Body       string `json:"body"`
-	CreatedAt  int64  `json:"created_at"`
-	CcOf       string `json:"cc_of,omitempty"` // a routing cc copy of this message id
-	CcOfSeq    int64  `json:"cc_of_seq,omitempty"`
-	CcTo       string `json:"cc_to,omitempty"` // label of the original recipient, from the reader's view
+	ID         string   `json:"id"`
+	Seq        int64    `json:"seq"`
+	From       string   `json:"from"`
+	FromName   string   `json:"from_name"` // the sender's name (an address; ids are not shown)
+	FromLabel  string   `json:"from_label"`
+	To         string   `json:"to"`
+	Kind       string   `json:"kind,omitempty"`
+	ReplyTo    string   `json:"reply_to,omitempty"`
+	ReplyToSeq int64    `json:"reply_to_seq,omitempty"`
+	Op         string   `json:"op,omitempty"`
+	Body       string   `json:"body"`
+	CreatedAt  int64    `json:"created_at"`
+	CcOf       string   `json:"cc_of,omitempty"` // a routing cc copy of this message id
+	CcOfSeq    int64    `json:"cc_of_seq,omitempty"`
+	CcTo       string   `json:"cc_to,omitempty"` // label of the original recipient, from the reader's view
+	Cc         []string `json:"cc,omitempty"`    // labels of everyone else that got a copy of the original, from the reader's view
+
+	unacked, held bool // read by the history view only (not on the wire)
 }
 
 type InboxArgs struct {
@@ -205,6 +247,15 @@ type InboxArgs struct {
 	// Wait: return only mail not yet given in this batch (a pull: on this run); with none, wait up
 	// to this many seconds (at most MaxInboxWait) and return as soon as mail comes.
 	Wait int `json:"wait,omitempty"`
+}
+
+// HistoryArgs is the inbox tool's read-only look at the caller's own mail (history.go): View
+// "recent" lists the latest messages (Before: those older than that #N), View "message" shows the
+// one in ID. It writes no delivery, opens no batch and acks nothing.
+type HistoryArgs struct {
+	View   string `json:"view"`
+	ID     string `json:"id,omitempty"`
+	Before string `json:"before,omitempty"`
 }
 
 type Delivered struct {

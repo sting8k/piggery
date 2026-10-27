@@ -48,6 +48,11 @@ them.
 The model sees the tools with a `piggery_` prefix in pi, omp, dsh and opencode (`piggery_send`) and as
 `mcp__piggery__send` in Claude Code and Codex; manifests and the CLI use the short names.
 
+The `inbox` tool also looks back at your own mail, read-only (no delivery, no batch, no ack; there is no CLI for it):
+`view: recent` lists your last 10 messages, received and sent, newest first (`before: #N` gives the 10 older than
+#N); `view: message` with `id: #N` shows one in full and whether it is still unread. Mail held for you is not in
+either; your own held mail is, marked `held`.
+
 Environment: `PIGGERY_DISABLED=1` makes an adapter inert (a session that must not join);
 `PIGGERY_INSTALL_DIR` and `PIGGERY_VERSION` steer `install.sh` and `install.ps1`, which also make `pig`, a short
 name for `piggery` (a symlink; a hard link `pig.exe` on Windows) when that name is free; every command here
@@ -108,7 +113,7 @@ runs. A team already founded keeps its manifest as it was.
 | `roles.<r>.can_spawn` | `[]` | Roles this role may spawn |
 | `roles.<r>.can_set_cwd` | `false` | May spawn a worker in another directory (see `spawn.allowed_roots`) |
 | `roles.<r>.spawn.allow_tools` | `[]` | Tools the harness profile turns off that this role keeps |
-| `routing[]` | none = all denied | `{from, to, allow, cc}`; the first rule matching a sender and receiver decides; `cc` roles get a copy (a member that left the team gets none); a `to: notify` line is ignored with a warning (`piggery check` shows it), since only piggery writes to `notify` |
+| `routing[]` | none = all denied | `{from, to, allow, cc}`; the first rule matching a sender and receiver decides; `cc` roles get a copy (a member that left the team gets none); a `send` may also name `cc` (`piggery send --cc a,b`): teammates only, each checked like a send to it, and a name that would be refused (routing, another team, unknown) is left out and told back while the send goes; the original's reader sees who got a copy; a `to: notify` line is ignored with a warning (`piggery check` shows it), since only piggery writes to `notify` |
 | `timers[]` | `[]` | `{on: <role>, working_for: <duration>, notify: <role\|reports_to>}`: one notice when a working member has no turn end for that long (`silent_for` is its old name: piggery renames it in the templates in `~/.piggery/templates` when the daemon starts and on `setup`; elsewhere it is still read and `piggery check` warns); `notify: notify` is ignored, and a member that left the team is never notified. `{on: <role>, every: <duration>}` (at least `1m`, no `notify`): the members of that role get `Working now: <names> (rule every <d>).` once a period while a member of another role works and none of theirs does; the period starts when such work is first seen, starts again after a moment when nobody in the team works, and after a daemon restart |
 | `taskforce.idle_for` | none | A top-level `taskforce:` block makes the template callable as a taskforce (`spawn template=`: a temporary team that reports to the caller). `idle_for` (a duration; the built-in `council`, `dual-lens` and `advisor` use `20m`): when every member has been idle that long, the caller gets one notice per idle stretch. Only its caller closes a taskforce (`close team=<name>`; a close from inside it, its chair included, is refused). It also closes with its caller and when its chair stops (gone, left or parked): the other members are stopped as with `team down` and the caller gets one notice; a closed taskforce is never reopened. A key in the block that piggery does not know is ignored, and `piggery check` warns. All taskforce keys live in this block, so a binary that does not know it runs the template as a normal one |
 | `limits.depth` | none | How deep spawn chains may go |

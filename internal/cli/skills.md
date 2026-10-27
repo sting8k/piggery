@@ -16,7 +16,7 @@ are `#N`; people and teams are names.
 
 ```sh
 piggery who                                   # your team, other teams (name, gate), solos
-piggery send <to> "text" [--reply-to #N] [--kind K]
+piggery send <to> "text" [--reply-to #N] [--kind K] [--cc a,b]
 piggery inbox [--wait N]                      # new mail (read only); --wait: wait up to N s (max 50) for mail the work needs, never sleep
 piggery completion --batch N                  # ack a batch you pulled with inbox --batch N
 ```
@@ -27,6 +27,9 @@ piggery completion --batch N                  # ack a batch you pulled with inbo
 - `--op assign` (to a member that reports to you): the mail becomes that member's current task,
   shown in `piggery top`; a later assign replaces it. Put a short title on the first line. A task
   given by `agent spawn|resume` is one already.
+- `--cc` (optional): teammates that also get a copy; a name that cannot is told back, the send goes.
+- The `inbox` tool's `view` (`recent`; `message` with `id`) looks back at mail you already have, read-only, e.g.
+  after your context was compacted.
 - Reply with `--reply-to` the `#N` you answer.
   `kind` is a free label for the receiver; piggery never reads it.
 - After sending, end your turn: mail wakes you. Do not poll.

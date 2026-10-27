@@ -649,8 +649,16 @@ func (s *mcpServer) callTool(name string, raw json.RawMessage) (string, error) {
 	case name == "inbox":
 		var a struct {
 			Wait int `json:"wait"`
+			core.HistoryArgs
 		}
 		_ = json.Unmarshal(raw, &a)
+		if a.View != "" || a.ID != "" || a.Before != "" { // a look back at mail already read: read-only, answered as text
+			var text string
+			if err := c.call(proto.VerbHistory, a.HistoryArgs, &text); err != nil {
+				return "", err
+			}
+			return text, nil
+		}
 		var msgs []core.Delivered
 		// No batch: while a turn is open the daemon records the delivery in its batch.
 		if err := c.call(proto.VerbInbox, core.InboxArgs{Wait: a.Wait}, &msgs); err != nil {

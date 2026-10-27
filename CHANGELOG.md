@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.12.0 - 2026-10-27
+
+`send` takes an optional `cc`, and the `inbox` tool can look back at your own mail.
+
+Upgrade: `piggery update`, then restart open pi, omp, dsh, opencode, Claude and Codex sessions (the
+tool list is read at start). The integrations move to pi 24, omp 23, dsh 24 and opencode 19.
+
+### New
+
+- **`inbox` looks back** (the tool only, no CLI): `view: recent` lists your last 10 messages, received
+  and sent, newest first, each with `#N`, when, who, kind, `re #N`, whether it is unread and a short
+  preview; `before: #N` pages back. `view: message` with `id: #N` shows one in full and whether it is
+  unread. Read-only: it records no delivery and acks nothing, so mail you have not handled is still
+  given as new. Mail held for you is not shown; your own held mail is, marked.
+- **`cc` on `send`** (`piggery send --cc a,b`). Each name is checked as a send to it would be
+  (routing, visibility). A name that would be refused, is in another team, or is unknown gets no
+  copy and is named in the result; the send itself still goes. Copies carry no rate cost. The
+  recipient of the original and of each copy now sees who else got a copy: `cc="lookout (lookout),
+  kim (peer)"`, routing `cc` copies included.
+
 ## v0.11.2 - 2026-10-25
 
 A pi, omp, dsh or opencode session that changes participant in the middle of a run now shows as working.

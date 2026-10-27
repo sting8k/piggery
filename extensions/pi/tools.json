@@ -25,6 +25,13 @@
 					"op": {
 						"type": "string",
 						"description": "assign: this mail is the current task of the member it goes to (it must report to you; shown in top; a later assign replaces it; give it a short title on the first line)."
+					},
+					"cc": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "optional: names that also get a copy"
 					}
 				},
 				"required": [
@@ -35,13 +42,25 @@
 		},
 		{
 			"name": "inbox",
-			"description": "Read your unacknowledged piggery messages.",
+			"description": "Read your unacknowledged piggery messages. view looks back at mail you already have; it changes nothing.",
 			"parameters": {
 				"type": "object",
 				"properties": {
 					"wait": {
 						"type": "integer",
 						"description": "With nothing unread, wait up to this many seconds (at most 50) and return as soon as mail comes. Use it when the work in hand needs that mail; never sleep."
+					},
+					"view": {
+						"type": "string",
+						"description": "recent: your last 10 messages, received and sent, newest first. message: one message in full, with id."
+					},
+					"id": {
+						"type": "string",
+						"description": "#N of the message to show, with view message"
+					},
+					"before": {
+						"type": "string",
+						"description": "#N: with view recent, the 10 messages older than it"
 					}
 				}
 			}

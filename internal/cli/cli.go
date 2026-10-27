@@ -286,6 +286,10 @@ func (e *env) send(args []string) error {
 	fs.StringVar(&a.ReplyTo, "reply-to", "", "the #N (or id) of the message answered")
 	fs.StringVar(&a.ClientMsgID, "client-msg-id", "", "idempotency key")
 	fs.StringVar(&a.Op, "op", "", "assign (a task for a member that reports to you)")
+	fs.Func("cc", "names (comma-separated) that also get a copy", func(v string) error {
+		a.CC = append(a.CC, core.SplitNames(v)...)
+		return nil
+	})
 	pos, err := parse(fs, args)
 	if err != nil {
 		return err
@@ -306,6 +310,9 @@ func (e *env) send(args []string) error {
 			dup += fmt.Sprintf(" HELD by %s (not delivered; an admin can `piggery release #%d`)", r.RuleID, r.Seq)
 		}
 		fmt.Fprintf(w, "sent #%d%s\n", r.Seq, dup)
+		for _, c := range r.CcRefused {
+			fmt.Fprintf(w, "no cc copy to %s: %s (%s)\n", c.To, c.Reason, c.RuleID)
+		}
 	})
 }
 

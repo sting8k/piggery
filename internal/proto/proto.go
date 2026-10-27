@@ -20,6 +20,7 @@ const (
 	VerbRelease      = "release"       // admin, args core.ReleaseArgs -> null; delivers a held message
 	VerbSend         = "send"          // args core.SendArgs -> core.SendResult
 	VerbInbox        = "inbox"         // args core.InboxArgs -> []core.Delivered
+	VerbHistory      = "history"       // args core.HistoryArgs -> string (read-only): the inbox tool's view of the caller's own mail
 	VerbCompletion   = "completion"    // args core.CompletionArgs -> core.CompletionResult
 	VerbWho          = "who"           // no args -> []core.Presence
 	VerbWatchAdd     = "watch.add"     // args core.TimerArgs -> core.Timer

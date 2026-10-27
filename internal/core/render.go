@@ -27,28 +27,37 @@ func RenderMail(msgs []Delivered, toolPrefix string, now time.Time) string {
 	}
 	parts := make([]string, len(msgs))
 	for i, m := range msgs {
-		a := fmt.Sprintf(`id="#%d" from="%s" sender="%s"`, m.Seq, m.FromLabel, m.FromName)
-		if m.Kind != "" {
-			a += fmt.Sprintf(` kind="%s"`, m.Kind)
-		}
-		if m.ReplyTo != "" {
-			a += fmt.Sprintf(` reply_to="#%d"`, m.ReplyToSeq)
-		}
-		if m.CcOf != "" { // a routing cc copy
-			a += fmt.Sprintf(` cc_of="#%d" cc_of_mail_to="%s"`, m.CcOfSeq, m.CcTo)
-		}
-		sent := time.UnixMilli(m.CreatedAt)
-		a += fmt.Sprintf(` at="%s"`, sentAt(sent, now))
-		if d := now.Sub(sent); d > time.Minute { // held, or shown again
-			a += fmt.Sprintf(` age="%s"`, shortAge(d))
-		}
-		if m.Redelivered { // given before and not acked: whatever its age
-			a += ` redelivered="true"`
-		}
-		parts[i] = fmt.Sprintf("<message %s>\n%s\n</message>", a, m.Body)
+		parts[i] = renderMessage(m, now, "")
 	}
 	return fmt.Sprintf("[piggery] %s:\n\n%s\n\nTo reply, use the %ssend tool with to=<sender> and reply_to=<id> (the #N).",
 		heading, strings.Join(parts, "\n\n"), toolPrefix)
+}
+
+// renderMessage is one message as the model reads it: the engine-stamped header, then the body.
+// extra is more header attributes (the history view's to, unread, held), each with a leading space.
+func renderMessage(m Delivered, now time.Time, extra string) string {
+	a := fmt.Sprintf(`id="#%d" from="%s" sender="%s"`, m.Seq, m.FromLabel, m.FromName)
+	if m.Kind != "" {
+		a += fmt.Sprintf(` kind="%s"`, m.Kind)
+	}
+	if m.ReplyTo != "" {
+		a += fmt.Sprintf(` reply_to="#%d"`, m.ReplyToSeq)
+	}
+	if m.CcOf != "" { // a routing cc copy
+		a += fmt.Sprintf(` cc_of="#%d" cc_of_mail_to="%s"`, m.CcOfSeq, m.CcTo)
+	}
+	if len(m.Cc) > 0 { // who else got a copy
+		a += fmt.Sprintf(` cc="%s"`, strings.Join(m.Cc, ", "))
+	}
+	sent := time.UnixMilli(m.CreatedAt)
+	a += fmt.Sprintf(` at="%s"`, sentAt(sent, now))
+	if d := now.Sub(sent); d > time.Minute { // held, or shown again
+		a += fmt.Sprintf(` age="%s"`, shortAge(d))
+	}
+	if m.Redelivered { // given before and not acked: whatever its age
+		a += ` redelivered="true"`
+	}
+	return fmt.Sprintf("<message %s%s>\n%s\n</message>", a, extra, m.Body)
 }
 
 // sentAt is a send time in local time: 14:02:11 today, 2026-09-26 23:58 another day.
@@ -82,13 +91,21 @@ func shortAge(d time.Duration) string {
 // SentText is the model-facing result of a send (the send tool and declarative tools alike).
 func SentText(r SendResult) string {
 	ref := fmt.Sprintf("#%d", r.Seq)
+	out := "sent " + ref
 	switch {
 	case r.Duplicate:
 		return "duplicate of " + ref
 	case r.Held:
-		return fmt.Sprintf("stored %s but HELD by %s: not delivered until an admin releases it", ref, r.RuleID)
+		out = fmt.Sprintf("stored %s but HELD by %s: not delivered until an admin releases it", ref, r.RuleID)
 	}
-	return "sent " + ref
+	if len(r.CcRefused) > 0 { // the send went; these names got no copy
+		no := make([]string, len(r.CcRefused))
+		for i, c := range r.CcRefused {
+			no[i] = fmt.Sprintf("%s (%s)", c.To, c.Reason)
+		}
+		out += "; no cc copy to " + strings.Join(no, ", ")
+	}
+	return out
 }
 
 // RenderWho renders who for the model: the caller's team in full, then one line per other team and

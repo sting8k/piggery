@@ -361,6 +361,8 @@ export function apply(ctx, config) {
 		},
 		async inbox(part, p) {
 			await part.ensureConnected();
+			// A look back at mail already read: read-only, answered as text.
+			if (p.view || p.id || p.before) return part.client.call("history", { view: p.view, id: p.id, before: p.before });
 			// No batch: in a turn the daemon records the delivery in that turn.
 			const msgs = await part.client.call("inbox", p.wait ? { wait: p.wait } : {});
 			if (!msgs.length) return emptyInbox(p.wait);

@@ -432,6 +432,8 @@ export default function piggery(omp: ExtensionAPI) {
 
 	builtin("inbox", async (_id, p, signal) => {
 		await ensureConnected();
+		// A look back at mail already read: read-only, answered as text.
+		if (p.view || p.id || p.before) return text(await client!.call("history", { view: p.view, id: p.id, before: p.before }));
 		// No batch: in a turn the daemon records the delivery in that turn (like piggery mcp).
 		// A wait ends with the turn: an abort answers at once (mail the wait then takes stays unacked).
 		const call = client!.call("inbox", p.wait ? { wait: p.wait } : {});

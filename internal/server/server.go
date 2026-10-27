@@ -588,7 +588,7 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 		default:
 			return call(req, func(a core.LogArgs) (any, error) { return s.eng.Log(ctx, a) })
 		}
-	case proto.VerbSend, proto.VerbInbox, proto.VerbCompletion, proto.VerbWho,
+	case proto.VerbSend, proto.VerbInbox, proto.VerbHistory, proto.VerbCompletion, proto.VerbWho,
 		proto.VerbWatchAdd, proto.VerbWatchList, proto.VerbAgent, proto.VerbIdentify, proto.VerbPresence,
 		proto.VerbHarnessEvent:
 	default:
@@ -639,6 +639,8 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 		return call(req, func(a core.SendArgs) (any, error) { return s.eng.Send(ctx, c, a) })
 	case proto.VerbInbox:
 		return call(req, func(a core.InboxArgs) (any, error) { return s.eng.Inbox(ctx, c, a) })
+	case proto.VerbHistory:
+		return call(req, func(a core.HistoryArgs) (any, error) { return s.eng.History(ctx, c, a) })
 	case proto.VerbCompletion:
 		return call(req, func(a core.CompletionArgs) (any, error) { return s.eng.Completion(ctx, c, a) })
 	case proto.VerbWho:

@@ -15,6 +15,7 @@ export function render(msgs, now = Date.now()) {
 		if (m.kind) attrs += ` kind="${m.kind}"`;
 		if (m.reply_to) attrs += ` reply_to="#${m.reply_to_seq}"`;
 		if (m.cc_of) attrs += ` cc_of="#${m.cc_of_seq}" cc_of_mail_to="${m.cc_to}"`; // a routing cc copy
+		if (m.cc?.length) attrs += ` cc="${m.cc.join(", ")}"`; // who else got a copy
 		attrs += ` at="${sentAt(m.created_at, now)}"`;
 		if (now - m.created_at > 60_000) attrs += ` age="${age(now - m.created_at)}"`; // held, or shown again
 		if (m.redelivered) attrs += ` redelivered="true"`; // given before and not acked: whatever its age
@@ -49,8 +50,9 @@ function age(ms) {
 export function sentText(r) {
 	const ref = `#${r.seq}`;
 	if (r.duplicate) return `duplicate of ${ref}`;
-	if (r.held) return `stored ${ref} but HELD by ${r.rule_id}: not delivered until an admin releases it`;
-	return `sent ${ref}`;
+	let out = r.held ? `stored ${ref} but HELD by ${r.rule_id}: not delivered until an admin releases it` : `sent ${ref}`;
+	if (r.cc_refused?.length) out += `; no cc copy to ${r.cc_refused.map((c) => `${c.to} (${c.reason})`).join(", ")}`; // the send went
+	return out;
 }
 
 /**

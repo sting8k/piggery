@@ -83,7 +83,7 @@ func (e *Engine) send(ctx context.Context, c Caller, a SendArgs) (SendResult, er
 		if err != nil {
 			return err
 		}
-		res.RuleID, recipient = g.rule, g.recipient
+		res.RuleID, recipient, res.CcRefused = g.rule, g.recipient, g.ccRefused
 		if res.Seq, err = t.insertMessage(res.ID, a.ClientMsgID, p.team, p.id, g.toID, a.Kind,
 			a.ReplyTo, a.Op, a.Body); err != nil {
 			return err
@@ -127,8 +127,9 @@ type gatePlan struct {
 	toID, recipient string // recipient: participant to wake ("" for notify)
 	rule, key       string // limit that holds it ("" = none) and its notice dedupe key
 	cc              []participant
-	crossTeam       bool // to another team's gate: no routing, no cc
-	noGate          bool // to a member that left while its team has no gate: held (leave.go)
+	ccRefused       []CcRefusal // names the sender chose that get no copy
+	crossTeam       bool        // to another team's gate: no routing, no cc
+	noGate          bool        // to a member that left while its team has no gate: held (leave.go)
 }
 
 // gateTrace records each check of the send gate, for `why`. A nil trace records nothing.
@@ -215,11 +216,20 @@ func (t *txn) sendGate(p participant, m manifest, a SendArgs, tr *gateTrace) (ga
 	} else {
 		tr.add("limits", "pass", "", "no declared mail limit is reached")
 	}
+	if g.cc, g.ccRefused, err = t.senderCC(p, m, a, g.toID, g.crossTeam); err != nil {
+		return g, err
+	}
 	if g.crossTeam {
 		return g, nil
 	}
-	if g.cc, err = t.ccRecipients(p, m, toRole, g.toID); err != nil {
+	routed, err := t.ccRecipients(p, m, toRole, g.toID)
+	if err != nil {
 		return g, err
+	}
+	for _, q := range routed {
+		if !slices.ContainsFunc(g.cc, func(c participant) bool { return c.id == q.id }) {
+			g.cc = append(g.cc, q)
+		}
 	}
 	if len(g.cc) > 0 {
 		names := make([]string, len(g.cc))
@@ -621,7 +631,8 @@ func (t *txn) readMessages(reader participant, where string, args ...any) ([]Mes
 		COALESCE(reply_to,''), COALESCE(op,''), body, created_at,
 		COALESCE(cc_of,''), COALESCE((SELECT o.to_id FROM messages o WHERE o.id = messages.cc_of),''),
 		COALESCE((SELECT o.seq FROM messages o WHERE o.id = messages.reply_to),0),
-		COALESCE((SELECT o.seq FROM messages o WHERE o.id = messages.cc_of),0)
+		COALESCE((SELECT o.seq FROM messages o WHERE o.id = messages.cc_of),0),
+		acked_at IS NULL, held_reason IS NOT NULL
 		FROM messages WHERE `+where+` ORDER BY seq`, args...)
 	if err != nil {
 		return nil, internal(err)
@@ -630,7 +641,7 @@ func (t *txn) readMessages(reader participant, where string, args ...any) ([]Mes
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.Seq, &m.From, &m.To, &m.Kind, &m.ReplyTo,
-			&m.Op, &m.Body, &m.CreatedAt, &m.CcOf, &m.CcTo, &m.ReplyToSeq, &m.CcOfSeq); err != nil {
+			&m.Op, &m.Body, &m.CreatedAt, &m.CcOf, &m.CcTo, &m.ReplyToSeq, &m.CcOfSeq, &m.unacked, &m.held); err != nil {
 			rows.Close()
 			return nil, internal(err)
 		}
@@ -675,6 +686,34 @@ func (t *txn) readMessages(reader participant, where string, args ...any) ([]Mes
 				return nil, err
 			}
 			msgs[i].CcTo = label(reader, o)
+		}
+		// Who else got a copy, the reader aside (of an original: every copy; of a copy: the others).
+		// Copies go to members of the original's team (cc.go), all in view of its recipient and of
+		// each other: nothing is left out here.
+		rows, err := t.QueryContext(t.ctx, `SELECT to_id FROM messages WHERE cc_of=? AND to_id<>? ORDER BY seq`,
+			cmp.Or(msgs[i].CcOf, msgs[i].ID), reader.id)
+		if err != nil {
+			return nil, internal(err)
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, internal(err)
+			}
+			ids = append(ids, id)
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, internal(err)
+		}
+		for _, id := range ids {
+			q, err := who(id)
+			if err != nil {
+				return nil, err
+			}
+			msgs[i].Cc = append(msgs[i].Cc, label(reader, q))
 		}
 	}
 	return msgs, nil
