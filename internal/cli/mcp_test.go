@@ -358,6 +358,9 @@ func TestHookClaude(t *testing.T) {
 	var out bytes.Buffer
 	e := &env{dir: dir, stdout: &out}
 	stdin := `{"session_id":"s","prompt_id":"p1","stop_hook_active":true,"hook_event_name":"Stop"}`
+	old := sessionHost
+	sessionHost = func(...string) string { return "" } // no harness process above, even when the test runs in one
+	t.Cleanup(func() { sessionHost = old })
 
 	t.Setenv("PIGGERY_ID", "")
 	e.runHook("claude", "Stop", strings.NewReader(stdin), io.Discard)
