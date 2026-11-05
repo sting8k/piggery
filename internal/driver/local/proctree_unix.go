@@ -3,6 +3,7 @@
 package local
 
 import (
+	"context"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -13,7 +14,7 @@ import (
 
 // processTable is every process (`ps -A`, on macOS and Linux); nil when it cannot be read.
 func processTable() []proc {
-	out, err := exec.Command("ps", "-A", "-o", "pid=,ppid=,pgid=,lstart=").Output()
+	out, err := psCommand(context.Background(), "-A", "-o", "pid=,ppid=,pgid=,lstart=").Output()
 	if err != nil {
 		return nil
 	}

@@ -16,7 +16,7 @@ import (
 // psInfo reads the OS start time (unix ms) and command of pid. alive=false when ps reports no
 // such process; err when the process table could not be read.
 func psInfo(ctx context.Context, pid int) (start int64, command string, alive bool, err error) {
-	out, err := exec.CommandContext(ctx, "ps", "-ww", "-o", "lstart=,command=", "-p", strconv.Itoa(pid)).Output()
+	out, err := psCommand(ctx, "-ww", "-o", "lstart=,command=", "-p", strconv.Itoa(pid)).Output()
 	var ee *exec.ExitError
 	if errors.As(err, &ee) && ee.ExitCode() == 1 && len(strings.TrimSpace(string(out))) == 0 {
 		return 0, "", false, nil // ps: no such process

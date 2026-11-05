@@ -3,14 +3,24 @@
 package local
 
 import (
+	"context"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// lstartLayout is `ps -o lstart` (local time).
+// lstartLayout is `ps -o lstart` (local time) in the C locale.
 const lstartLayout = "Mon Jan _2 15:04:05 2006"
+
+// psCommand runs ps in the C locale: lstart is parsed with lstartLayout, and a localized LC_TIME
+// (vi_VN prints "T4 Thg 11  4 16:32:04 2026") would make every start time unknown.
+func psCommand(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, "ps", args...)
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	return cmd
+}
 
 // ProcessStartTime is the OS start time of pid in unix ms, or 0 when unknown. Recovery
 // compares it with the live process before killing anything, so a reused pid
@@ -18,7 +28,7 @@ const lstartLayout = "Mon Jan _2 15:04:05 2006"
 // `ps -o lstart=` exists on macOS and Linux (procps) and prints local time with one-second
 // resolution.
 func ProcessStartTime(pid int) int64 {
-	out, err := exec.Command("ps", "-o", "lstart=", "-p", strconv.Itoa(pid)).Output()
+	out, err := psCommand(context.Background(), "-o", "lstart=", "-p", strconv.Itoa(pid)).Output()
 	if err != nil {
 		return 0
 	}

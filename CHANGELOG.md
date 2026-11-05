@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- On Linux and macOS with a non-English `LC_TIME` (`vi_VN`, say), no Claude Code or Codex session
+  joined piggery: `ps` printed process start times in that language, piggery could not read them,
+  and the MCP server and hooks quietly found no session host. Worker recovery and kill read the same
+  start times. piggery now runs `ps` in the C locale.
+
 ## v0.12.0 - 2026-10-27
 
 `send` takes an optional `cc`, and the `inbox` tool can look back at your own mail.
