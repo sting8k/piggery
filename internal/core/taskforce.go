@@ -113,7 +113,10 @@ func (e *Engine) spawnTaskforce(ctx context.Context, c Caller, a AgentArgs) (Age
 			return AgentResult{}, err
 		}
 	}
-	bounded := e.inBounds(ctx, cmp.Or(root, from), dir)
+	bounded, err := e.inBounds(ctx, cmp.Or(root, from), dir)
+	if err != nil {
+		return AgentResult{}, err
+	}
 	var res AgentResult
 	var ref, harness, model, thinking, team string
 	err = e.inTx(ctx, func(t *txn) error {
@@ -153,7 +156,7 @@ func (e *Engine) spawnTaskforce(ctx context.Context, c Caller, a AgentArgs) (Age
 			}
 		}
 		role := m.sessionRole()
-		if harness, model, thinking, err = e.workerSettings(t, m, role, p.id, ""); err != nil {
+		if harness, model, thinking, err = e.workerSettings(t, m, role, p.id); err != nil {
 			return err
 		}
 		teamName, err := t.freeTeamName(cmp.Or(strings.TrimSpace(a.Name), a.Template))

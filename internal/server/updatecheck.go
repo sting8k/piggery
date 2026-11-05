@@ -36,7 +36,10 @@ func readUpdateCache(dir string) (c updateCache) {
 // last day, asks for the latest tag. A failed call (offline, rate limited) is silent: it counts as
 // today's call, so it is retried tomorrow, not on the next tick.
 func (s *server) checkUpdate(ctx context.Context, now time.Time) {
-	if s.latest == nil || DevBuild(s.version) || !s.settings.UpdateCheck {
+	if s.latest == nil || DevBuild(s.version) {
+		return
+	}
+	if set, err := s.settingsNow(); err != nil || !set.UpdateCheck {
 		return
 	}
 	if s.updateAt.IsZero() {

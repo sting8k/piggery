@@ -31,20 +31,18 @@ const OpAssign = "assign"
 
 // Engine is the piggery core. Safe for use by one daemon; callers serialize through the DB.
 type Engine struct {
-	db             *sql.DB
-	now            func() time.Time
-	notify         func(participantID string)
-	runtimes       []RuntimeDriver                      // one per harness (WithRuntime)
-	defaultHarness string                               // workers of no role or session harness (WithDefaultHarness)
-	allowedRoots   []string                             // spawn cwd bounds besides the team root (WithAllowedRoots)
-	sharedPrompts  func(template, role string) string   // the Human's text for a role card (WithSharedPrompts)
-	roleSpawn      func(template, role string) SpawnPin // the Human's harness/model/thinking for a role's workers (WithRoleSpawn)
-	minProtocol    int                                  // lowest adapter protocol version identify accepts
-	deliverLocks   sync.Map                             // participant id -> *sync.Mutex: one delivery at a time, in batch order
-	mailMu         sync.Mutex                           // guards mailWaits
-	mailWaits      map[string][]chan struct{}           // participant id -> inbox calls waiting for mail (Inbox Wait)
-	everyMu        sync.Mutex                           // guards everyLast
-	everyLast      map[string]int64                     // "team/rule index" -> when an every rule last told (or first saw work), ms
+	db           *sql.DB
+	now          func() time.Time
+	notify       func(participantID string)
+	runtimes     []RuntimeDriver            // one per harness (WithRuntime)
+	config       func() (Config, error)     // the Human's settings, read at each use (WithConfig)
+	minProtocol  int                        // lowest adapter protocol version identify accepts
+	deliverLocks sync.Map                   // participant id -> *sync.Mutex: one delivery at a time, in batch order
+	mailMu       sync.Mutex                 // guards mailWaits
+	mailWaits    map[string][]chan struct{} // participant id -> inbox calls waiting for mail (Inbox Wait)
+	everyMu      sync.Mutex                 // guards everyLast
+	everyLast    map[string]int64           // "team/rule index" -> when an every rule last told (or first saw work), ms
+	everyBusy    map[string]int64           // team -> when it was last seen with someone working, ms (guarded by everyMu)
 	// stopping holds the runs stopWorker is ending, and closing is set once the daemon stops: an
 	// exit of either is intended, so it does not wake the worker (ProcessExited).
 	stopping sync.Map // run id -> struct{}
@@ -57,8 +55,6 @@ type Engine struct {
 	abortPush func(participantID string) int
 	// soloLimits are the limits of a solo (WithSoloTemplate).
 	soloLimits map[string]int
-	// soloGateClosed: a new solo's gate starts closed (WithDefaultGate).
-	soloGateClosed bool
 	// templates resolves a team.found template name (WithTemplates).
 	templates func(name, cwd string) (string, error)
 	// templateList lists the templates found for a cwd (WithTemplateList).

@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -14,11 +15,18 @@ import (
 // lstartLayout is `ps -o lstart` (local time) in the C locale.
 const lstartLayout = "Mon Jan _2 15:04:05 2006"
 
-// psCommand runs ps in the C locale: lstart is parsed with lstartLayout, and a localized LC_TIME
-// (vi_VN prints "T4 Thg 11  4 16:32:04 2026") would make every start time unknown.
+// psCommand runs ps with its times in the C locale: lstart is parsed with lstartLayout, and a
+// localized LC_TIME (vi_VN prints "T4 Thg 11  4 16:32:04 2026") would make every start time
+// unknown. Only the time changes: LC_ALL would override LC_TIME, so it goes, and what it set for
+// characters stays as LC_CTYPE; under LC_ALL=C ps would escape a non-ASCII command (macOS prints
+// "café" as "cafM-CM-)") and a worker's program would no longer match the one recorded.
 func psCommand(ctx context.Context, args ...string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, "ps", args...)
-	cmd.Env = append(os.Environ(), "LC_ALL=C")
+	env := slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "LC_ALL=") })
+	if all := os.Getenv("LC_ALL"); all != "" {
+		env = append(env, "LC_CTYPE="+all)
+	}
+	cmd.Env = append(env, "LC_TIME=C")
 	return cmd
 }
 

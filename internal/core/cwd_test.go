@@ -43,7 +43,7 @@ func newCwdFixture(t *testing.T, root string, allowed ...string) cwdFixture {
 	}
 	t.Cleanup(func() { db.Close() })
 	rt := &fakeRuntime{}
-	e := core.New(db, core.WithRuntime(rt), core.WithAllowedRoots(allowed))
+	e := core.New(db, core.WithRuntime(rt), core.WithConfig(func() (core.Config, error) { return core.Config{AllowedRoots: allowed}, nil }))
 	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: lanes, Name: "lanes", Cwd: root})
 	if err != nil {
 		t.Fatal(err)

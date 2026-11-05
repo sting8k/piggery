@@ -81,6 +81,41 @@ type configFile struct {
 	Roles   map[string]RoleSpawn `yaml:"roles"` // not written by setup: only when the Human (or template update --force) adds it
 }
 
+// settingsNow is config.yaml as it is now, read at each use so an edit counts from the next one
+// with no restart (what was already set up keeps what it was set up with). The entries that
+// cannot work are left out; the warnings are logged when they change, not at every read.
+func (s *server) settingsNow() (Settings, error) {
+	set, err := LoadSettings(s.dir)
+	if err != nil {
+		return set, err
+	}
+	var pw, rw []string
+	set.Prompts, pw = CheckPrompts(s.dir, set.Prompts)
+	set.Roles, rw = CheckRoles(s.dir, set.Roles)
+	warns := append(append(set.Warnings, pw...), rw...)
+	s.warnMu.Lock()
+	changed := strings.Join(warns, "\n") != s.warned
+	s.warned = strings.Join(warns, "\n")
+	s.warnMu.Unlock()
+	if changed {
+		for _, w := range warns {
+			s.log.Warn("config file", "problem", w)
+		}
+	}
+	return set, nil
+}
+
+// engineConfig is settingsNow for core.WithConfig.
+func (s *server) engineConfig() (core.Config, error) {
+	set, err := s.settingsNow()
+	if err != nil {
+		return core.Config{}, err
+	}
+	return core.Config{DefaultHarness: set.Harness, SoloGateClosed: set.Gate == "closed", AllowedRoots: set.AllowedRoots,
+		SharedPrompts: promptsFor(s.dir, set.Prompts, func(m string) { s.log.Warn("shared prompts", "problem", m) }),
+		RoleSpawn:     roleSpawnFor(set.Roles)}, nil
+}
+
 // LoadSettings reads ConfigPath(dir); a missing file gives the defaults. An unknown key or a
 // value that is not a duration (`36h`, `14d`) or `off` is an error: the daemon does not start.
 func LoadSettings(dir string) (Settings, error) {
@@ -280,7 +315,7 @@ func configKeys() []configKey {
 		{"spawn.allowed_roots", "[" + strings.Join(d.AllowedRoots, ", ") + "]",
 			"absolute directories outside a team's root where a worker may be spawned with a cwd (the root and its repo's git worktrees always may)"},
 		{"update.check", "true", "ask GitHub once a day whether a newer piggery release is out, and say so in top, setup and update --check; nothing is installed (a dev build never asks)"},
-		{"prompts", "[]", "your prompt files by role, added to those roles' cards: - {file: rules/code.md, roles: [peer, solo, lead-peer/lead]} (file: relative to this directory or absolute; the file is read at each session start, the list needs a restart)"},
+		{"prompts", "[]", "your prompt files by role, added to those roles' cards: - {file: rules/code.md, roles: [peer, solo, lead-peer/lead]} (file: relative to this directory or absolute; the list and the file are read at each session start)"},
 	}
 }
 
@@ -293,7 +328,7 @@ func EnsureConfig(dir string) (added, manual []string, err error) {
 	cur, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		var b strings.Builder
-		b.WriteString("# piggery daemon settings: every key with its default. Restart the daemon after an edit.\n")
+		b.WriteString("# piggery daemon settings: every key with its default. Read each time it is needed: an edit counts from the next spawn or session, no restart.\n")
 		for _, k := range configKeys() {
 			added = append(added, k.key)
 			top, sub, nested := strings.Cut(k.key, ".")
@@ -676,7 +711,11 @@ func runGC(ctx context.Context, eng *core.Engine, dir string, set Settings) (cor
 func (s *server) autoGC(ctx context.Context) {
 	defer s.wg.Done()
 	for {
-		res, err := runGC(ctx, s.eng, s.dir, s.settings)
+		set, err := s.settingsNow()
+		var res core.GCResult
+		if err == nil {
+			res, err = runGC(ctx, s.eng, s.dir, set)
+		}
 		if err != nil {
 			s.log.Error("auto gc", "err", err)
 		}

@@ -152,7 +152,7 @@ func (e *Engine) Watch(ctx context.Context) (int, error) {
 	for _, tm := range teams {
 		open[tm.id] = true
 	}
-	e.pruneEvery(open)
+	e.pruneEvery(open, e.now().UnixMilli())
 	if len(teams) == 0 {
 		return 0, rows.Err()
 	}
@@ -221,15 +221,33 @@ func (e *Engine) Watch(ctx context.Context) (int, error) {
 	return fired, rows.Err()
 }
 
-// pruneEvery forgets the every periods of teams with no one working, so a team that starts work
-// again is told one period after, not at once.
-func (e *Engine) pruneEvery(working map[string]bool) {
+// everyIdleGraceMs is how long a team may have no one working before its every periods are
+// forgotten: a pause shorter than this (a lead answering the Human in short turns) keeps them.
+// Chosen from measured gaps between a human's messages (92% <= 10 minutes).
+const everyIdleGraceMs = 10 * 60_000
+
+// pruneEvery forgets the every periods of a team that has had no one working for everyIdleGraceMs,
+// so a team that starts work again after that is told one period after, not at once. working is
+// the teams with someone working at now. Memory only: no read, so a tick stays cheap.
+func (e *Engine) pruneEvery(working map[string]bool, now int64) {
 	e.everyMu.Lock()
 	defer e.everyMu.Unlock()
-	for k := range e.everyLast {
-		if !working[k[:strings.IndexByte(k, '/')]] {
-			delete(e.everyLast, k)
+	for team, last := range e.everyBusy {
+		if now-last < everyIdleGraceMs {
+			continue
 		}
+		delete(e.everyBusy, team) // also when work is back: the gap was past the grace
+		for k := range e.everyLast {
+			if k[:strings.IndexByte(k, '/')] == team {
+				delete(e.everyLast, k)
+			}
+		}
+	}
+	if e.everyBusy == nil {
+		e.everyBusy = map[string]int64{}
+	}
+	for team := range working {
+		e.everyBusy[team] = now
 	}
 }
 

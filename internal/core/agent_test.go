@@ -947,7 +947,7 @@ func TestWorkerHarnessChoice(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	pi := &fakeRuntime{harness: "pi"}
 	cc := &fakeRuntime{harness: "claude", profileModel: "sonnet"}
-	e := core.New(db, core.WithRuntime(pi), core.WithRuntime(cc), core.WithDefaultHarness("pi"))
+	e := core.New(db, core.WithRuntime(pi), core.WithRuntime(cc), core.WithConfig(func() (core.Config, error) { return core.Config{DefaultHarness: "pi"}, nil }))
 	team, err := e.TeamUp(ctx, core.TeamUpArgs{Cwd: t.TempDir(), Manifest: `
 template: h
 roles:

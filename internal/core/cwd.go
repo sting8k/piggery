@@ -26,16 +26,20 @@ func spawnDir(from, cwd string) (string, error) {
 // inBounds reports whether dir (symlinks resolved) is inside root, inside a git worktree of the
 // repo at root other than root's own checkout, or inside an allowed root: the engine's bounds,
 // which no template widens.
-func (e *Engine) inBounds(ctx context.Context, root, dir string) bool {
+func (e *Engine) inBounds(ctx context.Context, root, dir string) (bool, error) {
 	if within(root, dir) {
-		return true
+		return true, nil
 	}
-	for _, a := range e.allowedRoots {
+	c, err := e.currentConfig()
+	if err != nil {
+		return false, err
+	}
+	for _, a := range c.AllowedRoots {
 		if r, err := filepath.EvalSymlinks(a); err == nil && within(r, dir) {
-			return true
+			return true, nil
 		}
 	}
-	return slices.ContainsFunc(worktrees(ctx, root), func(w string) bool { return !within(w, root) && within(w, dir) })
+	return slices.ContainsFunc(worktrees(ctx, root), func(w string) bool { return !within(w, root) && within(w, dir) }), nil
 }
 
 // worktrees are the worktrees of the git repo at root, symlinks resolved; none when root is not

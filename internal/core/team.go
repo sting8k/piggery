@@ -174,7 +174,11 @@ func (e *Engine) Join(ctx context.Context, a JoinArgs) (JoinResult, error) {
 	if err := e.inTx(ctx, func(t *txn) (err error) { _, root, err = openTeam(t); return err }); err != nil {
 		return JoinResult{}, err
 	}
-	if !e.inBounds(ctx, root, cwd) {
+	bounded, err := e.inBounds(ctx, root, cwd)
+	if err != nil {
+		return JoinResult{}, err
+	}
+	if !bounded {
 		return JoinResult{}, e.inTx(ctx, func(*txn) error {
 			return deny(nil, "join", "bounds", "cwd.bounds", outOfBounds(cwd), nil, map[string]any{"cwd": cwd, "team": a.Team})
 		})

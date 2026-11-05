@@ -100,7 +100,7 @@ func TestWatchWorkingFor(t *testing.T) {
 }
 
 // An every rule tells its role once a period while a member of another role works: not when the
-// team starts work, not while its own role works, and a team that went idle starts a new period.
+// team starts work, not while its own role works, and a team idle for 10 minutes starts a new period (a shorter pause keeps it).
 func TestWatchEvery(t *testing.T) {
 	f := newWatchFixture(t, "{on: lead, every: 5m}")
 	f.presence(t, core.PresenceAgentStart)
@@ -122,11 +122,20 @@ func TestWatchEvery(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.presence(t, core.PresenceAgentSettled)
-	f.fires(t, 0) // nobody works: the period is forgotten
+	f.fires(t, 0) // nobody works
+	f.advance(9 * time.Minute)
 	f.presence(t, core.PresenceAgentStart)
-	f.advance(6 * time.Minute)
+	f.fires(t, 1) // a pause under 10m keeps the period, and it is past: told at once
+	f.fires(t, 0)
+	f.presence(t, core.PresenceAgentSettled)
+	f.fires(t, 0)
+	f.advance(10 * time.Minute)
+	f.fires(t, 0) // nobody worked for 10m: the period is forgotten
+	f.presence(t, core.PresenceAgentStart)
 	f.fires(t, 0) // work again: a new period, not a notice at once
-	f.advance(5 * time.Minute)
+	f.advance(4 * time.Minute)
+	f.fires(t, 0)
+	f.advance(1 * time.Minute)
 	f.fires(t, 1)
 }
 

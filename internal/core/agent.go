@@ -77,7 +77,10 @@ func (e *Engine) spawn(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 			return AgentResult{}, err
 		}
 	}
-	bounded := e.inBounds(ctx, cmp.Or(root, from), dir)
+	bounded, err := e.inBounds(ctx, cmp.Or(root, from), dir)
+	if err != nil {
+		return AgentResult{}, err
+	}
 	var res AgentResult
 	var cwd, ref, harness, model, thinking string
 	err = e.inTx(ctx, func(t *txn) error {
@@ -92,7 +95,7 @@ func (e *Engine) spawn(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 		if _, ok := m.Roles[a.Role]; !ok {
 			return errf(CodeInvalid, "role %q not in team manifest", a.Role)
 		}
-		if harness, model, thinking, err = e.workerSettings(t, m, a.Role, p.id, ""); err != nil {
+		if harness, model, thinking, err = e.workerSettings(t, m, a.Role, p.id); err != nil {
 			return err
 		}
 		if !contains(m.Roles[p.role].CanSpawn, a.Role) {
@@ -196,7 +199,10 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 	}); err != nil {
 		return AgentResult{}, err
 	}
-	bounded := e.inBounds(ctx, cmp.Or(root, cwd), cwd)
+	bounded, err := e.inBounds(ctx, cmp.Or(root, cwd), cwd)
+	if err != nil {
+		return AgentResult{}, err
+	}
 	if before.state == "parked" && !e.oldProcessEnded(ctx, before) {
 		return AgentResult{}, e.inTx(ctx, func(t *txn) error {
 			p, _, err := find(t)
@@ -257,13 +263,19 @@ func (e *Engine) resumeWorker(ctx context.Context, find func(t *txn) (participan
 		if !bounded {
 			return deny(&p, "agent.resume", "bounds", "cwd.bounds", outOfBounds(cwd), nil, map[string]any{"cwd": cwd, "target": w.id})
 		}
-		// What was stored at spawn; what is missing (the chain found nothing then): the chain
-		// again, from the worker's own ancestors. The choice is kept for the next resume.
-		harness, m2, t2, err := e.workerSettings(t, m, w.role, spawnedBy, w.harness)
-		if err != nil {
-			return err
+		// What was stored at spawn, never the config as it is now: a resumed session goes on as it
+		// ran ("" stays the harness's default).
+		harness := w.harness
+		if harness == "" {
+			c, err := e.currentConfig()
+			if err != nil {
+				return err
+			}
+			harness = e.defaultHarnessName(c)
 		}
-		model, thinking = cmp.Or(model, m2), cmp.Or(thinking, t2)
+		if e.runtimeFor(harness) == nil {
+			return errf(CodeInvalid, "%s: no runtime driver for harness %q", w.name, harness)
+		}
 		run := newID(t.now)
 		if _, err := t.ExecContext(t.ctx, `UPDATE participants SET run_id=?, token_hash=?, last_turn_end=NULL,
 			model=NULLIF(?,''), thinking=NULLIF(?,''), harness=?, capabilities=? WHERE id=?`, run, hashToken(token), model, thinking,

@@ -1,6 +1,8 @@
 package server
 
 import (
+	"io"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -86,5 +88,26 @@ func TestUnknownConfigKeyMessage(t *testing.T) {
 		if strings.Contains(msg, leak) {
 			t.Errorf("the message shows %q:\n%s", leak, msg)
 		}
+	}
+}
+
+// config.yaml is read at each use, not kept from the daemon's start: an edit counts from the next
+// spawn with no restart, and a file that cannot be read is an error there.
+func TestConfigReadAtEachUse(t *testing.T) {
+	dir := t.TempDir()
+	if _, err := manifests.Unpack(dir); err != nil {
+		t.Fatal(err)
+	}
+	s := &server{dir: dir, log: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	for _, model := range []string{"a", "b"} {
+		os.WriteFile(ConfigPath(dir), []byte("gate: closed\nroles:\n  slp/lead: {model: "+model+"}\n"), 0o600)
+		c, err := s.engineConfig()
+		if err != nil || c.RoleSpawn("slp", "lead").Model != model || !c.SoloGateClosed {
+			t.Fatalf("after writing model %s: %+v, %v", model, c.RoleSpawn("slp", "lead"), err)
+		}
+	}
+	os.WriteFile(ConfigPath(dir), []byte("roles: [\n"), 0o600)
+	if _, err := s.engineConfig(); err == nil {
+		t.Fatal("a config that cannot be parsed was read as fine")
 	}
 }

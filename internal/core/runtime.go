@@ -144,31 +144,48 @@ func WithRuntime(d RuntimeDriver) Option {
 	return func(e *Engine) { e.runtimes = append(e.runtimes, d) }
 }
 
-// WithDefaultHarness names the harness of workers whose role and main session name none
-// (config.yaml `harness`); default: the first driver's.
-func WithDefaultHarness(h string) Option { return func(e *Engine) { e.defaultHarness = h } }
-
-// WithAllowedRoots are directories outside a team's root where a worker may be spawned (config.yaml
-// `spawn.allowed_roots`).
-func WithAllowedRoots(dirs []string) Option { return func(e *Engine) { e.allowedRoots = dirs } }
-
-// WithSharedPrompts sets where a role card gets the Human's shared text (config.yaml `prompts`): f
-// returns the text for a role of a template ("" for none); what f cannot read it skips itself.
-// A solo asks with template "" and role "solo". Core only passes the names; the text is opaque.
-func WithSharedPrompts(f func(template, role string) string) Option {
-	return func(e *Engine) { e.sharedPrompts = f }
-}
-
 // SpawnPin is what the Human's config.yaml `roles` sets for a role's workers: each field is "" when
 // it sets none. Values pass through as written; core never reads a harness's model names.
 type SpawnPin struct{ Harness, Model, Thinking string }
 
-// WithRoleSpawn sets where a worker's harness, model and thinking level can come from the Human's
-// config (config.yaml `roles`, matched by role and template in the server): f returns the pin for a
-// role of a template, each field already settled by the config's own order. It ranks above the
-// manifest's deprecated spawn.harness|model|thinking and below a harness given for a resume.
-func WithRoleSpawn(f func(template, role string) SpawnPin) Option {
-	return func(e *Engine) { e.roleSpawn = f }
+// Config is what the Human's config.yaml sets for the engine. The zero Config sets nothing.
+type Config struct {
+	// DefaultHarness names the harness of workers whose role and main session name none
+	// (config.yaml `harness`); "": the first driver's.
+	DefaultHarness string
+	// SoloGateClosed makes the gate of a new solo closed (config.yaml gate: closed).
+	SoloGateClosed bool
+	// AllowedRoots are directories outside a team's root where a worker may be spawned (config.yaml
+	// `spawn.allowed_roots`).
+	AllowedRoots []string
+	// SharedPrompts is where a role card gets the Human's shared text (config.yaml `prompts`): it
+	// returns the text for a role of a template ("" for none); what it cannot read it skips itself.
+	// A solo asks with template "" and role "solo". Core only passes the names; the text is opaque.
+	SharedPrompts func(template, role string) string
+	// RoleSpawn is where a new worker's harness, model and thinking level can come from
+	// (config.yaml `roles`, matched by role and template in the server): the pin for a role of a
+	// template, each field already settled by the config's own order. It ranks above the
+	// manifest's deprecated spawn.harness|model|thinking.
+	RoleSpawn func(template, role string) SpawnPin
+}
+
+// WithConfig sets where the engine reads the Human's settings. f is called at each use, so an edit
+// counts from the next spawn, found, join or card, with no restart; an error from it fails that
+// request. A resumed worker keeps what it was spawned with.
+func WithConfig(f func() (Config, error)) Option {
+	return func(e *Engine) { e.config = f }
+}
+
+// currentConfig is the Human's settings as they are now (WithConfig); none set: the zero Config.
+func (e *Engine) currentConfig() (Config, error) {
+	if e.config == nil {
+		return Config{}, nil
+	}
+	c, err := e.config()
+	if err != nil {
+		return Config{}, errf(CodeInvalid, "%v", err)
+	}
+	return c, nil
 }
 
 // driverNamed is the driver of harness h, nil when none runs it.
@@ -216,18 +233,19 @@ func (e *Engine) runtimeFor(h string) RuntimeDriver {
 	if len(e.runtimes) == 1 {
 		return e.runtimes[0]
 	}
-	if h == "" {
-		h = e.defaultHarnessName()
+	if h == "" { // a row from before the harness was stored: the default is the best guess
+		c, _ := e.currentConfig()
+		h = e.defaultHarnessName(c)
 	}
 	return e.driverNamed(h)
 }
 
-func (e *Engine) defaultHarnessName() string {
-	if e.defaultHarness == "" && len(e.runtimes) > 0 {
+func (e *Engine) defaultHarnessName(c Config) string {
+	if c.DefaultHarness == "" && len(e.runtimes) > 0 {
 		h, _, _ := e.runtimes[0].Defaults()
 		return h
 	}
-	return e.defaultHarness
+	return c.DefaultHarness
 }
 
 // Agent actions.

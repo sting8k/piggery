@@ -70,7 +70,7 @@ func validateRoles(m manifest) error {
 // chain: config.yaml `roles`, else the role's deprecated spawn field, else that harness's profile,
 // else what the ancestor session reports when it runs the same harness, else "" (the harness
 // default). Values pass through as written.
-func (e *Engine) workerSettings(t *txn, m manifest, role, spawner, harness string) (h, model, thinking string, err error) {
+func (e *Engine) workerSettings(t *txn, m manifest, role, spawner string) (h, model, thinking string, err error) {
 	// The nearest ancestor that is a person's session: the session a human opened that started the chain.
 	var anc struct{ harness, model, thinking string }
 	for id, hops := spawner, 0; id != "" && hops < 64; hops++ {
@@ -87,15 +87,18 @@ func (e *Engine) workerSettings(t *txn, m manifest, role, spawner, harness strin
 		anc = struct{ harness, model, thinking string }{}
 		id = up
 	}
-	// Harness: the worker's own (resume), the role's, the main session's when a driver runs it,
-	// else the default.
-	var pin SpawnPin
-	if e.roleSpawn != nil {
-		pin = e.roleSpawn(m.Template, role)
+	// Harness: the role's, the main session's when a driver runs it, else the default.
+	c, err := e.currentConfig()
+	if err != nil {
+		return "", "", "", err
 	}
-	h = cmp.Or(harness, pin.Harness, m.Roles[role].Spawn.Harness)
+	var pin SpawnPin
+	if c.RoleSpawn != nil {
+		pin = c.RoleSpawn(m.Template, role)
+	}
+	h = cmp.Or(pin.Harness, m.Roles[role].Spawn.Harness)
 	if h == "" {
-		h = e.defaultHarnessName()
+		h = e.defaultHarnessName(c)
 		if e.driverNamed(anc.harness) != nil {
 			h = anc.harness
 		}

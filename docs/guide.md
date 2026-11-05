@@ -253,12 +253,15 @@ Everything piggery keeps is in `~/.piggery`. Some of it is yours to edit; the re
 `piggery setup` writes missing files and adds the keys a file lacks, keeping your values, comments
 and order. It never overwrites what you wrote.
 
-**When a change takes effect.** `config.yaml`: after a restart (`piggery restart`; it stops workers,
-`piggery resume <name>` brings them back), except `display.columns`, read on every run.
+**When a change takes effect.** `config.yaml`: read each time it is needed, so an edit counts from
+the next spawn, found, session start or gc, with no restart. What was already set up keeps what it was
+set up with: a worker you resume keeps the harness, model and thinking it was spawned with, a running
+team its template, a solo its gate. `spawn.allowed_roots` is checked again at every spawn and resume.
+While the daemon runs, a `config.yaml` it cannot read fails the request that needs it, with the reason.
 `harness/<harness>.json`: at the next spawn or resume. A template: at the next team found (a
 running team keeps the one it started with). A rules file: at the next session start.
 
-Run `piggery check` before `piggery restart`: it reads `config.yaml`, the harness profiles, your
+Run `piggery check` after an edit: it reads `config.yaml`, the harness profiles, your
 templates and the `prompts` entries the way the daemon will, and prints what would be refused (exit 1)
 and what would be skipped or ignored (`warning:`), without starting or changing anything.
 
@@ -330,8 +333,8 @@ prompts:
 A role is `<role>` (in every template), `<template>/<role>` (that template only; the template is the
 `template:` line of its manifest) or `solo`; `<template>/*` is every role of that template and `*` is
 every role of every template, solo included (a file several entries name is added once). The text goes right after the role's own instructions,
-under a heading naming the file. Files are read when a session starts, so edits need no restart, but
-a session already running keeps its card. The list itself needs a restart.
+under a heading naming the file. The list and the files are read when a session starts, so edits need no
+restart, but a session already running keeps its card.
 
 **Your own template.**
 

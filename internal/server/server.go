@@ -73,9 +73,12 @@ type server struct {
 	integrations func(dir string) []proto.Outdated     // Config.Integrations, for ps
 	latest       func(context.Context) (string, error) // Config.Latest, for the daily update check
 	updateAt     time.Time                             // when it last asked (read from the cache at the first tick); tick only
-	settings     Settings                              // config.yaml
 	startedAt    time.Time
 	stop         context.CancelFunc // the normal shutdown (as SIGINT/SIGTERM), for the stop verb
+	// warned is the config warnings last logged (settingsNow), so a file read at each use logs a
+	// problem once, not at every read. Its own lock: core calls settingsNow inside requests.
+	warnMu sync.Mutex
+	warned string
 
 	mu    sync.Mutex
 	conns map[*conn]struct{}
@@ -131,8 +134,7 @@ func Run(ctx context.Context, cfg Config) error {
 		return err
 	}
 	defer unlock()
-	settings, err := LoadSettings(cfg.Dir)
-	if err != nil {
+	if _, err := LoadSettings(cfg.Dir); err != nil { // a file the daemon refuses stops it here
 		return err
 	}
 	ctx, stop := context.WithCancel(ctx)
@@ -148,7 +150,7 @@ func Run(ctx context.Context, cfg Config) error {
 	}
 	defer db.Close()
 
-	s := &server{adminToken: token, log: log, dir: cfg.Dir, version: cfg.Version, integrations: cfg.Integrations, latest: cfg.Latest, settings: settings, startedAt: time.Now(), stop: stop, conns: map[*conn]struct{}{}, runs: map[string]string{}}
+	s := &server{adminToken: token, log: log, dir: cfg.Dir, version: cfg.Version, integrations: cfg.Integrations, latest: cfg.Latest, startedAt: time.Now(), stop: stop, conns: map[*conn]struct{}{}, runs: map[string]string{}}
 	opts := local.Options{OnExit: func(participantID, runID string, e core.Exit) {
 		// Every worker exit is recorded: one that ends on its own, and the ones StopAll ends
 		// while the daemon shuts down (so not the request/daemon ctx). Idempotent after Stop.
@@ -190,22 +192,10 @@ func Run(ctx context.Context, cfg Config) error {
 	for _, err := range errs {
 		log.Warn("config file", "err", err)
 	}
-	// The Human's shared prompts, read again: EnsureFiles may have added the entry of one piggery
-	// ships. What cannot work is logged and left out, never a reason not to start.
-	if again, err := LoadSettings(cfg.Dir); err == nil {
-		settings.Prompts, settings.Roles = again.Prompts, again.Roles
-	}
-	var promptWarns []string
-	settings.Prompts, promptWarns = CheckPrompts(cfg.Dir, settings.Prompts)
-	for _, w := range append(settings.Warnings, promptWarns...) {
-		log.Warn("shared prompts", "problem", w)
-	}
-	// The Human's roles (harness/model/thinking by role): same rule, an entry that cannot work is
-	// logged and left out.
-	var roleWarns []string
-	settings.Roles, roleWarns = CheckRoles(cfg.Dir, settings.Roles)
-	for _, w := range roleWarns {
-		log.Warn("roles", "problem", w)
+	// config.yaml after EnsureFiles and MigrateSpawn: what cannot work in it is logged now, never a
+	// reason not to start. It is read again at each use (settingsNow).
+	if _, err := s.settingsNow(); err != nil {
+		log.Warn("config file", "err", err)
 	}
 	if cfg.Integrations != nil {
 		// The extensions `piggery setup pi|omp|dsh|opencode` installed: rewritten when their integration
@@ -240,9 +230,7 @@ func Run(ctx context.Context, cfg Config) error {
 		runtimes[i] = core.WithRuntime(d)
 	}
 	s.eng = core.New(db, append(runtimes, core.WithNotify(s.wake),
-		core.WithDefaultHarness(settings.Harness), core.WithDefaultGate(settings.Gate == "closed"), core.WithAllowedRoots(settings.AllowedRoots),
-		core.WithSharedPrompts(promptsFor(s.dir, settings.Prompts, func(m string) { s.log.Warn("shared prompts", "problem", m) })), core.WithNotifySink(s.notifyHook),
-		core.WithRoleSpawn(roleSpawnFor(settings.Roles)),
+		core.WithConfig(s.engineConfig), core.WithNotifySink(s.notifyHook),
 		core.WithTemplates(func(name, _ string) (string, error) { return manifests.Resolve(name, s.dir) }),
 		core.WithTemplateList(func(string) ([]core.TemplateRef, error) {
 			ls, err := manifests.List(s.dir)
@@ -533,7 +521,9 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 				if s.integrations != nil {
 					r.Outdated = s.integrations(s.dir)
 				}
-				r.Update = UpdateAvailable(s.dir, s.settings, s.version)
+				if set, err := s.settingsNow(); err == nil {
+					r.Update = UpdateAvailable(s.dir, set, s.version)
+				}
 				r.Notices, _ = s.eng.Notices(ctx, noticesShown)
 				return r, err
 			})
@@ -582,7 +572,11 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 				if err != nil || a.DryRun {
 					return res, err
 				}
-				res.ExpiredArchives, err = s.eng.ExpireArchives(ArchiveDir(s.dir), s.settings.GCArchiveKeep)
+				set, err := s.settingsNow()
+				if err != nil {
+					return res, err
+				}
+				res.ExpiredArchives, err = s.eng.ExpireArchives(ArchiveDir(s.dir), set.GCArchiveKeep)
 				return res, err
 			})
 		default:

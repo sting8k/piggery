@@ -15,11 +15,6 @@ import (
 // heldGateClosed is held_reason of mail from outside to a unit whose gate closed.
 const heldGateClosed = "gate_closed"
 
-// WithDefaultGate makes the gate of a new solo closed (config.yaml gate: closed).
-func WithDefaultGate(closed bool) Option {
-	return func(e *Engine) { e.soloGateClosed = closed }
-}
-
 // unitClosed is whether the gate of p's unit is closed: its team's, or its own when it is a solo.
 func (t *txn) unitClosed(team, id string) (bool, error) {
 	q, arg := `SELECT gate_closed FROM participants WHERE id=?`, id

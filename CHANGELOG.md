@@ -1,13 +1,34 @@
 # Changelog
 
-## Unreleased
+## v0.12.1 - 2026-11-05
+
+Claude Code and Codex sessions join piggery under a non-English locale, an edit to `config.yaml` counts from the next spawn with no restart, and an `every` timer keeps its period through a short pause.
+
+Upgrade: `piggery update`. No integration moves. A Claude Code or Codex session that could not join
+because of its locale joins once it is restarted (its piggery MCP server is the old binary until then).
+
+### Changed
+
+- **`config.yaml` needs no restart.** The daemon read it once at start, so a model set in `roles:`
+  after that was not used by the next spawn, and nothing said so. It now reads the file each time it
+  needs it (spawn, found, session start, gc): an edit counts from the next one. What was already set
+  up keeps what it was set up with: a resumed worker keeps the harness, model and thinking it was
+  spawned with, even one it left to the harness default. While the daemon runs, a file it cannot read
+  fails the request that needs it, with the reason. The comment at the top of an existing
+  `config.yaml` still says to restart after an edit; it is no longer needed.
+- **An `every` period survives a pause under 10 minutes.** It used to be forgotten whenever nobody in
+  the team worked, so a lead answering the Human in short turns never woke an `every: 5m` lookout.
+  The period now runs on wall time and is forgotten only after 10 minutes with nobody working.
 
 ### Fixed
 
-- On Linux and macOS with a non-English `LC_TIME` (`vi_VN`, say), no Claude Code or Codex session
-  joined piggery: `ps` printed process start times in that language, piggery could not read them,
-  and the MCP server and hooks quietly found no session host. Worker recovery and kill read the same
-  start times. piggery now runs `ps` in the C locale.
+- **A non-English locale no longer keeps Claude Code and Codex sessions out** (#41). On macOS and
+  Linux with a localized `LC_TIME` (`vi_VN`, `fr_FR`, say), `ps` printed process start times in that
+  language and piggery could not read them: the MCP server and the hooks quietly found no session
+  host, so no Claude Code or Codex session joined, and recovering or stopping a worker after a
+  daemon restart could not check its process either. piggery now reads `ps` times in the C locale
+  and leaves the rest of your locale as it is. Thanks to @duyhieu9898 for the report, the diagnosis
+  and the fix.
 
 ## v0.12.0 - 2026-10-27
 

@@ -1,6 +1,7 @@
 package core_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -262,9 +263,11 @@ func TestSharedPromptsInTheCard(t *testing.T) {
 	}
 	defer db.Close()
 	var asked []string
-	e := core.New(db, core.WithSharedPrompts(func(template, role string) string {
-		asked = append(asked, template+"/"+role)
-		return "\nSHARED " + template + "/" + role + "\n"
+	e := core.New(db, core.WithConfig(func() (core.Config, error) {
+		return core.Config{SharedPrompts: func(template, role string) string {
+			asked = append(asked, template+"/"+role)
+			return "\nSHARED " + template + "/" + role + "\n"
+		}}, nil
 	}))
 	man := strings.Replace(leadWorker, "lead:   {", "lead:   {instructions: 'DO THIS', ", 1)
 	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: man, Cwd: t.TempDir()})
@@ -328,11 +331,13 @@ func TestRoleSpawnConfigOverDeprecatedManifest(t *testing.T) {
 	}
 	defer db.Close()
 	rt := &fakeRuntime{profileModel: "profile", profileThinking: "low"}
-	e := core.New(db, core.WithRuntime(rt), core.WithRoleSpawn(func(template, role string) core.SpawnPin {
-		if template == "pd" && role == "dev" {
-			return core.SpawnPin{Model: "cfg"}
-		}
-		return core.SpawnPin{}
+	e := core.New(db, core.WithRuntime(rt), core.WithConfig(func() (core.Config, error) {
+		return core.Config{RoleSpawn: func(template, role string) core.SpawnPin {
+			if template == "pd" && role == "dev" {
+				return core.SpawnPin{Model: "cfg"}
+			}
+			return core.SpawnPin{}
+		}}, nil
 	}))
 	team, err := e.TeamUp(ctx, core.TeamUpArgs{Manifest: planDev, Cwd: t.TempDir()})
 	if err != nil || len(team.Warnings) != 1 || !strings.Contains(team.Warnings[0], "model choices for dev belong in config.yaml roles:") {
@@ -353,5 +358,39 @@ func TestRoleSpawnConfigOverDeprecatedManifest(t *testing.T) {
 	}
 	if s := rt.Starts()[0]; s.Model != "cfg" || s.Thinking != "max" {
 		t.Fatalf("spawn used %q/%q, want the config's model and the manifest's thinking", s.Model, s.Thinking)
+	}
+}
+
+// A resumed worker goes on with what it was spawned with, never the config as it is now: here a
+// model it left to the harness ("") that a pin names since. A new spawn takes the config as it is
+// at that spawn, and a config that cannot be read fails it with the reason.
+func TestResumeKeepsWhatSpawnChose(t *testing.T) {
+	f := newAgentFixture(t)
+	var pin core.SpawnPin
+	var cfgErr error
+	core.WithConfig(func() (core.Config, error) {
+		return core.Config{RoleSpawn: func(string, string) core.SpawnPin { return pin }}, cfgErr
+	})(f.e)
+	agent := func(action, name string) error {
+		_, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: action, Role: "worker", Name: name, Target: name, Task: "t"})
+		return err
+	}
+	if err := agent(core.AgentSpawn, "w1"); err != nil {
+		t.Fatal(err)
+	}
+	pin = core.SpawnPin{Model: "new", Thinking: "high"}
+	cfgErr = errors.New("config.yaml: line 3: bad")
+	if err := agent(core.AgentSpawn, "w2"); err == nil || !strings.Contains(err.Error(), "line 3") {
+		t.Fatalf("spawn with a config that cannot be read: %v; want its reason", err)
+	}
+	cfgErr = nil
+	for _, step := range [][2]string{{core.AgentSpawn, "w2"}, {core.AgentStop, "w1"}, {core.AgentResume, "w1"}} {
+		if err := agent(step[0], step[1]); err != nil {
+			t.Fatal(step, err)
+		}
+	}
+	st := f.rt.Starts()
+	if len(st) != 3 || st[1].Model != "new" || st[1].Thinking != "high" || st[2].Model != "" || st[2].Thinking != "" {
+		t.Fatalf("starts %+v; want w2 on the pin, w1 resumed on the harness default it was spawned with", st)
 	}
 }

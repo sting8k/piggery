@@ -236,7 +236,11 @@ func (t *txn) insertSession(teamID, role, cwd, run, token string, a JoinAutoArgs
 	if err != nil {
 		return "", err
 	}
-	closed := t.soloClosed
+	c, err := t.config()
+	if err != nil {
+		return "", err
+	}
+	closed := c.SoloGateClosed
 	if teamID == "" { // a session whose team closed takes that team's gate; else the configured default
 		err := t.QueryRowContext(t.ctx, `SELECT COALESCE((SELECT gate_closed FROM teams WHERE id=team_id), gate_closed)
 			FROM participants WHERE (harness_ref=? OR id IN (SELECT participant_id FROM participant_refs WHERE ref=?))
