@@ -73,7 +73,8 @@ type record struct {
 	reply   []byte
 	// failed is the key of a turn the harness ended in failure without an end of its adapter
 	// (Codex: turn/completed failed, no Stop hook); the runner reports it (Options.OnTurnFailed).
-	failed string
+	failed    string
+	failedErr string // the harness's error text for it, "" if none
 	// ended are delivered batches this line ends (a deliverer codec); the runner reports each
 	// (Options.OnDelivery).
 	ended []core.DeliveryEnd
@@ -95,7 +96,7 @@ type Options struct {
 	OnExit func(participantID, runID string, e core.Exit)
 	// OnTurnFailed is called when a run's turn failed with no end from its adapter
 	// (core.Engine.RuntimeTurnFailed). It must not call back into the driver.
-	OnTurnFailed func(participantID, runID, key string)
+	OnTurnFailed func(participantID, runID, key, errText string)
 	// OnDelivery is called when a delivered batch of a run ended (core.Engine.DeliveryEnded),
 	// in the order the harness reported them.
 	OnDelivery func(participantID, runID string, batch int64, outcome string)
@@ -556,7 +557,7 @@ func (d *Driver) normalize(w *worker, r io.ReadCloser) {
 				w.answer(rec.answers, line)
 			}
 			if rec.failed != "" && d.opts.OnTurnFailed != nil {
-				d.opts.OnTurnFailed(w.participantID, w.runID, rec.failed)
+				d.opts.OnTurnFailed(w.participantID, w.runID, rec.failed, rec.failedErr)
 			}
 			for _, e := range rec.ended {
 				if d.opts.OnDelivery != nil {

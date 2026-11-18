@@ -264,7 +264,9 @@ func (k RowKind) MarshalText() ([]byte, error) {
 type Actions struct {
 	Pick bool `json:"pick,omitempty"` // its model and thinking level can be changed
 	Kill bool `json:"kill,omitempty"` // it is a headless worker that is not gone: it can be killed
-	Tail bool `json:"tail,omitempty"` // piggery has a log of it to read
+	// Reload: it is a headless worker in an open team: it can be restarted with the config as it is now.
+	Reload bool `json:"reload,omitempty"`
+	Tail   bool `json:"tail,omitempty"` // piggery has a log of it to read
 }
 
 // Row is one row of the list's table: what to show of a member, a solo, a team listed as one line
@@ -413,7 +415,7 @@ func BuildList(in ListInput) List {
 			Harness: HarnessLabel(mem.Harness, mem.Headless), Model: ModelID(mem.Model), Ctx: ctx, Turns: turns, Unacked: mem.Unacked,
 			Age: Ago(mem.CreatedAt, now), Since: Ago(at, now), SinceAt: at, Cwd: RelCwd(g.Dir, mem.Cwd),
 			CreatedAt: mem.CreatedAt, StateSince: mem.StateSince, LastTurnEnd: mem.LastTurnEnd,
-			Actions: &Actions{Pick: Pickable(mem, t.ID, s.Closed), Kill: KillNote(mem.Name, mem.Headless, mem.State) == "", Tail: MemberTailable(mem, in.Readable)}}
+			Actions: &Actions{Pick: Pickable(mem, t.ID, s.Closed), Kill: KillNote(mem.Name, mem.Headless, mem.State) == "", Reload: ReloadNote(mem.Name, mem.Headless, closed) == "", Tail: MemberTailable(mem, in.Readable)}}
 	}
 	goneRow := func(t *core.TeamState, gone []core.MemberState, open bool) Row {
 		var last int64

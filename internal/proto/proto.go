@@ -40,6 +40,7 @@ const (
 	VerbAbort        = "abort"         // admin, args core.AdminTarget -> core.AbortResult
 	VerbKill         = "kill"          // admin, args core.AdminTarget -> core.AgentResult (exit)
 	VerbResume       = "resume"        // admin, args core.AdminTarget -> core.AgentResult (new run)
+	VerbReload       = "reload"        // admin, args core.ReloadArgs -> core.AgentResult (new run, or Pending)
 	VerbModel        = "model"         // admin, args core.ModelArgs -> core.ModelResult
 	VerbModels       = "models"        // admin, args core.AdminTarget -> core.ModelsResult (read-only): what `model` accepts for the worker
 	VerbGC           = "gc"            // admin, args core.GCArgs -> core.GCResult (archives under <dir>/archive)

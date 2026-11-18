@@ -408,7 +408,7 @@ export function apply(ctx, config) {
 			if (p.action === "resume" && r.task_seq) return `resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`;
 			if (p.action === "gate_close" || p.action === "gate_open") return r.text;
 			if (p.action === "admit") return `admitted ${p.target} as ${p.role}`;
-			return `${p.action} ok: ${p.target}`;
+			return r.text || `${p.action} ok: ${p.target}`;
 		},
 	};
 

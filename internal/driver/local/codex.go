@@ -375,7 +375,7 @@ func (c *codexCodec) record(w *worker, line []byte) record {
 		r.reply, _ = json.Marshal(map[string]any{"id": m.ID, "error": map[string]any{"code": -32601,
 			"message": "a piggery worker answers no requests; ask the member you report to with the piggery send tool"}})
 	default:
-		r.std, r.failed = codexStandard(run, m)
+		r.std, r.failed, r.failedErr = codexStandard(run, m)
 		if m.Method == "turn/completed" && run != nil {
 			// A failed turn is closed by the driver, and that end wakes again for pending mail.
 			run.mu.Lock()
@@ -390,7 +390,7 @@ func (c *codexCodec) record(w *worker, line []byte) record {
 // codexStandard translates one app-server notification into the standard records (runner.go)
 // that tail and top read, and names a turn that failed (failed: its id). Usage comes per model
 // call (thread/tokenUsage/updated "last": the context then), so each is one turn_end.
-func codexStandard(run *codexRun, m codexMsg) ([][]byte, string) {
+func codexStandard(run *codexRun, m codexMsg) ([][]byte, string, string) {
 	var p struct {
 		Turn struct {
 			ID     string `json:"id"`
@@ -436,7 +436,7 @@ func codexStandard(run *codexRun, m codexMsg) ([][]byte, string) {
 			}
 			out = append(out, stdError(msg))
 			add(map[string]string{"type": "agent_end"})
-			return out, p.Turn.ID // no Stop hook ran: the driver closes the turn
+			return out, p.Turn.ID, msg // no Stop hook ran: the driver closes the turn
 		}
 		add(map[string]string{"type": "agent_end"})
 	case "thread/tokenUsage/updated":
@@ -487,7 +487,7 @@ func codexStandard(run *codexRun, m codexMsg) ([][]byte, string) {
 			}
 		}
 	}
-	return out, ""
+	return out, "", ""
 }
 
 // codexItem is the part of a thread item the codec reads.

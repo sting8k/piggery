@@ -397,7 +397,7 @@ export default function piggery(omp: ExtensionAPI) {
 	omp.on("session_stop", async (e: any) => {
 		// Mail the daemon hands back is steered in (deliver, in beforeSettle): omp then ends this run and
 		// starts one that shows it. Nothing is returned: no `block`, no hidden continuation.
-		await turns.beforeSettle(outcomeOf(e.last_assistant_message));
+		await turns.beforeSettle(outcomeOf(e.last_assistant_message), false, e.last_assistant_message?.errorMessage);
 	});
 	omp.on("agent_end", async (e: any, c?: ExtensionContext) => {
 		if (c) ctx = c;
@@ -405,7 +405,7 @@ export default function piggery(omp: ExtensionAPI) {
 		// above, or the Human typed one): not a settle.
 		if (e.willContinue || ctx?.hasPendingMessages()) return;
 		const last = e.messages?.[e.messages.length - 1];
-		await turns.endRun(outcomeOf(last));
+		await turns.endRun(outcomeOf(last), last?.errorMessage);
 	});
 
 	const text = (s: string) => ({ content: [{ type: "text" as const, text: s }], details: undefined });
@@ -493,6 +493,6 @@ export default function piggery(omp: ExtensionAPI) {
 		if (p.action === "resume" && r.task_seq) return text(`resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "gate_close" || p.action === "gate_open") return text(r.text);
 		if (p.action === "admit") return text(`admitted ${p.target} as ${p.role}`);
-		return text(`${p.action} ok: ${p.target}`);
+		return text(r.text || `${p.action} ok: ${p.target}`);
 	});
 }

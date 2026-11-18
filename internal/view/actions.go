@@ -12,6 +12,18 @@ func Pickable(mem core.MemberState, teamID string, closed []core.ClosedTeam) boo
 	return mem.Headless && mem.State != "gone" && !slices.ContainsFunc(closed, func(c core.ClosedTeam) bool { return c.ID == teamID })
 }
 
+// ReloadNote is why the participant called name cannot be reloaded from here, "" when it can: a
+// headless worker of an open team, running or stopped (a stopped one starts with the new config).
+func ReloadNote(name string, headless, closedTeam bool) string {
+	switch {
+	case !headless:
+		return name + " is not a headless worker: restart it in its own window"
+	case closedTeam:
+		return name + "'s team is closed"
+	}
+	return ""
+}
+
 // KillNote is why the participant called name cannot be killed from here, "" when it can: only a
 // headless worker that is not gone is killed this way; a session is stopped in its own window.
 func KillNote(name string, headless bool, state string) string {

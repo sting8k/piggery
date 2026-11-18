@@ -6,6 +6,18 @@
 // agent_start…agent_settled; its key is an id made here and sent with every event of the turn.
 // Calls go out one at a time, in event order.
 
+/** The text of a harness error: a JSON api error gives "<type>: <message>" (either alone if only one is there), anything else as it is. */
+export function errorText(e) {
+	const s = typeof e === "string" ? e : (e?.message ?? "");
+	try {
+		const j = JSON.parse(s);
+		const e = j?.error ?? j;
+		return [e?.type, e?.message].filter((x) => typeof x === "string" && x).join(": ") || s;
+	} catch {
+		return s;
+	}
+}
+
 const OUTCOME = { completed: "ok", aborted: "interrupted", error: "failed" };
 
 export class Turns {
@@ -13,7 +25,8 @@ export class Turns {
 	 * @param {object} io
 	 * @param {(args: object) => Promise<{text?: string, block?: boolean, part?: number}>} io.event harness.event
 	 * @param {(event: string) => Promise<any>} io.presence presence events with no standard event
-	 * @param {(text: string, steer: boolean) => void} io.deliver shows mail to the model
+	 * @param {(text: string, steer: boolean) => void | Promise<void>} io.deliver shows mail to the model;
+	 *   a steer resolves once the harness has it queued
 	 * @param {() => string} io.newKey a fresh turn key
 	 * @param {() => boolean} [io.pending] input is queued in the harness (pi: a queued steer makes
 	 *   the run go on past before_settle)
@@ -37,6 +50,7 @@ export class Turns {
 	reset() {
 		this.key = null; // the turn in progress (or the one an idle wake opened)
 		this.held = false; // a wake came after this run's turn ended, before pi settled
+		this.lastError = ""; // the error text of the last model reply that failed, for a failed turn_end
 		this.ended = []; // turn_ends the daemon did not get (it was down), oldest first
 		this.unread = false; // mail was steered in and no model turn has started since
 		this.parts = { key: null, given: [], inContext: 0, sent: 0 }; // gives of the turn `key`
@@ -69,7 +83,7 @@ export class Turns {
 		const r = await this.io.event(args);
 		if (r?.text) {
 			if (r.part && args.prompt_id === this.key) this.turnParts().given.push({ part: r.part, text: r.text });
-			this.io.deliver(r.text, steer);
+			await this.io.deliver(r.text, steer);
 			if (steer) this.unread = true;
 		}
 		return r;
@@ -105,7 +119,8 @@ export class Turns {
 	 * The model's reply ended (pi's assistant message_end): ok (not error or aborted) means it read
 	 * every give in its context, so the daemon acks them now, before the reply's tools run.
 	 */
-	answered(ok) {
+	answered(ok, error = "") {
+		this.lastError = ok ? "" : errorText(error);
 		const p = this.turnParts();
 		if (this.key && ok && p.inContext > p.sent) this.toolBoundary(true);
 	}
@@ -113,7 +128,8 @@ export class Turns {
 	/**
 	 * Tool results are in (pi's turn_end): mail can be steered into the running turn. modelOk: the model
 	 * turn that just ended finished without error or abort, so the gives in its context are seen and
-	 * the daemon acks them; a harness that does not say keeps acking at the turn's end.
+	 * the daemon acks them; a harness that does not say keeps acking at the turn's end. Resolves once
+	 * the mail is delivered: pi awaits it, so the steer is in its queue when it looks next.
 	 */
 	toolBoundary(modelOk = false) {
 		const key = this.key;
@@ -121,14 +137,14 @@ export class Turns {
 		const args = { event: "tool_boundary", prompt_id: key };
 		const p = this.turnParts();
 		if (modelOk && p.inContext > p.sent) args.seen = p.sent = p.inContext;
-		this.enqueue(() => this.give(args, true));
+		return this.enqueue(() => this.give(args, true));
 	}
 
 	/**
 	 * pi's last actionable boundary. Awaited by pi: mail the daemon hands back (block) is steered
 	 * in and pi keeps running the same turn; its next before_settle ends it again.
 	 */
-	beforeSettle(outcome, final = false) {
+	beforeSettle(outcome, final = false, error = "") {
 		const key = this.key;
 		const o = OUTCOME[outcome];
 		if (!key || !o) return this.q;
@@ -142,9 +158,10 @@ export class Turns {
 			const unseen = this.io.pending ? this.unread || this.io.pending() : this.io.reads && o === "ok" && this.unread;
 			if (!final && unseen) return;
 			try {
-				const r = await this.io.event({ event: "turn_end", prompt_id: key, outcome: o });
+				const text = o === "failed" ? errorText(error) || this.lastError : "";
+				const r = await this.io.event({ event: "turn_end", prompt_id: key, outcome: o, ...(text && { error: text }) });
 				if (r?.block && r.text) {
-					this.io.deliver(r.text, true);
+					await this.io.deliver(r.text, true);
 					return;
 				}
 			} catch (err) {
@@ -163,8 +180,8 @@ export class Turns {
 	 * nothing settles); else the run settles. pi does not call this. Steered mail no model turn
 	 * read ends the turn interrupted (the ack waits for a turn that shows it).
 	 */
-	async endRun(outcome) {
-		await this.beforeSettle(this.io.reads && this.unread ? "aborted" : outcome, true);
+	async endRun(outcome, error = "") {
+		await this.beforeSettle(this.io.reads && this.unread ? "aborted" : outcome, true, error);
 		if (this.key) return;
 		this.settled();
 	}

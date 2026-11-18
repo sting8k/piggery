@@ -83,10 +83,16 @@ export default function piggery(pi: ExtensionAPI) {
 		else console.error(msg);
 	};
 
-	const deliver = (text: string, steer: boolean) => {
+	const deliver = async (text: string, steer: boolean) => {
 		// The adapter's view can trail pi by one event; never send a plain message into a busy agent.
-		if (steer || (ctx && !ctx.isIdle())) pi.sendUserMessage(text, { deliverAs: "steer" });
-		else pi.sendUserMessage(text);
+		if (!steer && !(ctx && !ctx.isIdle())) return pi.sendUserMessage(text);
+		pi.sendUserMessage(text, { deliverAs: "steer" });
+		// pi queues a steer only after its input handlers ran, and reads the queue right after the
+		// turn_end and before_settle handlers it awaits: resolve once it is queued, or the mail waits
+		// one more tool call (an inbox wait then waits for mail it was given). Capped (a guess, 1 s):
+		// an input handler may drop the text.
+		for (const end = Date.now() + 1000; ctx && !ctx.hasPendingMessages() && Date.now() < end; )
+			await new Promise((r) => setImmediate(r));
 	};
 	const io = {
 		event: (args: object) => client!.call("harness.event", args),
@@ -378,7 +384,7 @@ export default function piggery(pi: ExtensionAPI) {
 	// reply's tools run.
 	const ok = (m) => m?.stopReason !== "error" && m?.stopReason !== "aborted";
 	pi.on("message_end", (e) => {
-		if (e.message?.role === "assistant") return turns.answered(ok(e.message));
+		if (e.message?.role === "assistant") return turns.answered(ok(e.message), e.message.errorMessage);
 		if (e.message?.role !== "user") return;
 		const c = e.message.content;
 		turns.messageIn(typeof c === "string" ? c : c.filter((x) => x.type === "text").map((x) => x.text).join(""));
@@ -473,6 +479,6 @@ export default function piggery(pi: ExtensionAPI) {
 		if (p.action === "resume" && r.task_seq) return text(`resumed ${p.target}; its task is #${r.task_seq} (its reply comes to you as mail)`);
 		if (p.action === "gate_close" || p.action === "gate_open") return text(r.text);
 		if (p.action === "admit") return text(`admitted ${p.target} as ${p.role}`);
-		return text(`${p.action} ok: ${p.target}`);
+		return text(r.text || `${p.action} ok: ${p.target}`);
 	});
 }

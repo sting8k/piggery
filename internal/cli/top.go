@@ -58,6 +58,15 @@ func (e *env) top(args []string) error {
 		_, err = kc.CallInto(proto.VerbKill, core.AdminTarget{Target: id}, &core.AgentResult{})
 		return err
 	}
+	tm.reload = func(id string) (r core.AgentResult, err error) {
+		kc, err := e.connect()
+		if err != nil {
+			return r, err
+		}
+		defer kc.Close()
+		_, err = kc.CallInto(proto.VerbReload, core.ReloadArgs{AdminTarget: core.AdminTarget{Target: id}}, &r)
+		return r, err
+	}
 	own := func(f func(c *Client) error) error { // its own connection: the model's is busy with the next fetch
 		kc, err := e.connect()
 		if err != nil {
@@ -121,9 +130,10 @@ type topModel struct {
 	drawn    time.Time // when the frame was last drawn
 	dragFrom int
 
-	kill     func(id string) error // kills a worker (the same verb as `piggery kill`, on a connection of its own)
-	killing  killAsk               // the worker `x` asked about, until y or another key
-	killNote string                // the answer to the last `x`, until the next key
+	kill     func(id string) error                     // kills a worker (the same verb as `piggery kill`, on a connection of its own)
+	reload   func(id string) (core.AgentResult, error) // reloads a worker (`piggery reload`, on a connection of its own)
+	killing  killAsk                                   // the worker `x` asked about, until y or another key
+	killNote string                                    // the answer to the last `x`, until the next key
 
 	pick       *modelPicker                      // the open model picker (toppicker.go)
 	hover      string                            // the worker whose Tail model row the mouse is on
@@ -138,6 +148,9 @@ type topModel struct {
 
 // killAsk is the worker `x` is asking to kill.
 type killAsk struct{ id, name string }
+
+// reloaded is the result of a reload: the text to show.
+type reloaded struct{ note string }
 
 // killed is the result of a kill.
 type killed struct {
@@ -163,10 +176,10 @@ func newTopModel(c *Client, dir string) *topModel {
 
 // topKeys are top's keys; the footer shows the short list, ? the full one.
 type topKeys struct {
-	Next, Prev, Up, Down, Preview, Close, Events, Notices, Mouse, Kill, Help, Quit key.Binding
-	PgUp, PgDown, Home, End                                                        key.Binding // ? only
-	Model                                                                          key.Binding
-	mouseOn                                                                        bool // what the m entry says
+	Next, Prev, Up, Down, Preview, Close, Events, Notices, Mouse, Kill, Reload, Help, Quit key.Binding
+	PgUp, PgDown, Home, End                                                                key.Binding // ? only
+	Model                                                                                  key.Binding
+	mouseOn                                                                                bool // what the m entry says
 }
 
 func newTopKeys() topKeys {
@@ -184,6 +197,7 @@ func newTopKeys() topKeys {
 		Notices: b([]string{"n"}, "n", "notices"),
 		Mouse:   b([]string{"m"}, "m", "mouse"),
 		Kill:    b([]string{"x"}, "x", "kill worker"),
+		Reload:  b([]string{"r"}, "r", "reload worker (config as it is now)"),
 		Model:   b([]string{"M"}, "M", "model"),
 		Help:    b([]string{"?"}, "?", "help"),
 		Quit:    b([]string{"q", "ctrl+c"}, "q", "quit"),
@@ -220,7 +234,7 @@ func onOff(on bool) string {
 
 func (k topKeys) FullHelp() [][]key.Binding {
 	k.Mouse.SetHelp("m", "mouse "+onOff(k.mouseOn)+" (off: select text)")
-	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Close}, {k.Events, k.Notices, k.Mouse, k.Kill, k.Model, k.Help, k.Quit}}
+	return [][]key.Binding{{k.Next, k.Prev}, {k.Down, k.PgUp, k.Home}, {k.Preview, k.Close}, {k.Events, k.Notices, k.Mouse, k.Kill, k.Reload, k.Model, k.Help, k.Quit}}
 }
 
 // tailState follows one log incrementally: a worker's run log or a session's transcript.
@@ -342,6 +356,8 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.w, m.h = msg.Width, msg.Height
+	case reloaded:
+		m.killNote = msg.note
 	case killed:
 		m.killNote = "killed " + msg.name
 		if msg.err != nil {
@@ -364,6 +380,8 @@ func (m *topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch {
 		case key.Matches(msg, k.Kill):
 			m.askKill()
+		case key.Matches(msg, k.Reload):
+			return m, m.reloadSel()
 		case key.Matches(msg, k.Model): // the picker without the mouse, for the selected worker when its model can change
 			if mem, team := m.selMember(); mem != nil && view.Pickable(*mem, team.ID, m.ps.Closed) {
 				return m, m.openPicker(*mem)
@@ -785,6 +803,32 @@ func (m *topModel) askKill() {
 		}
 	}
 	m.killNote = view.KillNote(name, false, "")
+}
+
+// reloadSel is `r`: reload the selected worker in the background (no question: nothing is lost, its
+// turn ends first), or say why it cannot be.
+func (m *topModel) reloadSel() tea.Cmd {
+	mem, team := m.selMember()
+	if mem == nil {
+		m.killNote = "select a worker to reload"
+		return nil
+	}
+	closed := slices.ContainsFunc(m.ps.Closed, func(c core.ClosedTeam) bool { return c.ID == team.ID })
+	if m.killNote = view.ReloadNote(mem.Name, mem.Headless, closed); m.killNote != "" {
+		return nil
+	}
+	m.killNote = "reloading " + mem.Name + "…"
+	reload, id, name := m.reload, mem.ID, mem.Name
+	return func() tea.Msg {
+		if reload == nil {
+			return reloaded{"reload " + name + ": no connection"}
+		}
+		r, err := reload(id)
+		if err != nil {
+			return reloaded{"reload " + name + ": " + err.Error()}
+		}
+		return reloaded{r.Text}
+	}
 }
 
 // killCmd kills ask's worker in the background and reports the result as a killed message.

@@ -100,6 +100,7 @@ piggery abort w1              # cancel its current turn (like Esc); it stays ali
 piggery model w1 HP/kimi-k3   # its model from the next turn; --thinking high for the level
 piggery kill w1               # stop its process now (short: piggery x w1; in top: x, then y)
 piggery resume w1             # start a stopped worker again in its session
+piggery reload w1             # restart it in its session with the config as it is now (after its turn; in top: r)
 piggery team down demo        # close a team: workers stopped, nothing is acked
 ```
 
@@ -108,6 +109,11 @@ read, except `x` in `top`. In `top`, a member's current task sits under its name
 assignment from whoever it reports to, and whether it handed back.
 Gone members with nobody live below them fold into one `✗ N gone` line per team (`ps` too); `enter`
 on a team or on that line folds or opens it, and `top` remembers it.
+
+When a worker's turn ends on an error (a model API that stayed overloaded, say) it sits idle and does
+not wake itself. The member it reports to gets one mail from the engine: who it is, its task and the
+error. Mail the worker to go on, or `tail` it. A gate's failed turn on team mail still goes to your
+notify hooks (`failed`), not to a second mail.
 
 `top` has one tab per project (a directory), between **All** and **Closed**; move with `←/→` or click.
 All lists only what is alive: a team whose members are all gone and a gone solo are in their
@@ -255,7 +261,8 @@ and order. It never overwrites what you wrote.
 
 **When a change takes effect.** `config.yaml`: read each time it is needed, so an edit counts from
 the next spawn, found, session start or gc, with no restart. What was already set up keeps what it was
-set up with: a worker you resume keeps the harness, model and thinking it was spawned with, a running
+set up with: a worker you resume keeps the harness, model and thinking it was spawned with (`piggery
+reload w1` restarts it with the config as it is now, keeping a model you set by hand), a running
 team its template, a solo its gate. `spawn.allowed_roots` is checked again at every spawn and resume.
 While the daemon runs, a `config.yaml` it cannot read fails the request that needs it, with the reason.
 `harness/<harness>.json`: at the next spawn or resume. A template: at the next team found (a

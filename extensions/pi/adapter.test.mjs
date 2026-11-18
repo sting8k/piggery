@@ -25,6 +25,19 @@ function setup(answer = () => ({}), pending) {
 	return { turns, calls, shown };
 }
 
+test("a failed turn carries the error text of the reply that failed (a JSON api error gives its type and message); an ok turn carries none", async () => {
+	const { turns, calls } = setup();
+	turns.agentStart();
+	turns.answered(false, '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}');
+	await turns.beforeSettle("error");
+	turns.settled();
+	assert.deepEqual(calls.at(-1), { event: "turn_end", prompt_id: "k1", outcome: "failed", error: "overloaded_error: Overloaded" });
+	turns.agentStart();
+	turns.answered(true);
+	await turns.beforeSettle("completed");
+	assert.deepEqual(calls.at(-1), { event: "turn_end", prompt_id: "k2", outcome: "ok" });
+});
+
 test("a pi run maps to one keyed turn: start, tool boundaries, end by outcome; abort ends interrupted at settle", async () => {
 	const { turns, calls } = setup();
 	turns.agentStart();

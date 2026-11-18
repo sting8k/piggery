@@ -482,7 +482,7 @@ func (e *env) watchAdd(args []string) error {
 
 func (e *env) agent(args []string) error {
 	if len(args) == 0 {
-		return fmt.Errorf("%w: agent spawn|stop|resume|tail", errUsage)
+		return fmt.Errorf("%w: agent spawn|stop|resume|reload|tail", errUsage)
 	}
 	action, rest := args[0], args[1:]
 	fs := e.flags("agent " + action)
@@ -495,9 +495,9 @@ func (e *env) agent(args []string) error {
 		fs.StringVar(&a.Cwd, "cwd", "", "the worker's or taskforce's directory, relative to yours or absolute (a worker: your role needs can_set_cwd)")
 	case core.AgentTail:
 		fs.IntVar(&a.Lines, "lines", 20, "records to show")
-	case core.AgentStop, core.AgentResume, core.AgentTemplates, core.AgentClose, core.AgentReopen:
+	case core.AgentStop, core.AgentResume, core.AgentReload, core.AgentTemplates, core.AgentClose, core.AgentReopen:
 	default:
-		return fmt.Errorf("%w: agent spawn|stop|resume|tail|templates|close|reopen", errUsage)
+		return fmt.Errorf("%w: agent spawn|stop|resume|reload|tail|templates|close|reopen", errUsage)
 	}
 	pos, err := parse(fs, rest)
 	if err != nil {

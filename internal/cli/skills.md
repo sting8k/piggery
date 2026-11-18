@@ -44,6 +44,7 @@ piggery agent spawn --template T [--name N] [--cwd DIR] "task"   # a taskforce, 
 piggery agent close [<team>]                  # a taskforce you called up; with no team, your own (see below)
 piggery agent resume <worker> ["task"]        # a task comes to it as at spawn
 piggery agent stop|resume|tail <worker>       # tail: read its log before nudging or resuming it
+piggery agent reload <worker>                 # restart it in its session with the Human's config as it is now, once its turn ends
 piggery agent templates                       # the templates a team can be founded from
 ```
 

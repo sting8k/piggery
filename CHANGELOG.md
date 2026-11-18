@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.13.0 - 2026-11-18
+
+A worker can be reloaded in its session with the config as it is now, a member whose turn fails tells its lead, and a pi `inbox` wait no longer waits out mail that has just arrived.
+
+Upgrade: `piggery update`, then restart open pi, omp, dsh and opencode sessions. Their integrations
+move to pi 25, omp 24, dsh 25 and opencode 20 (`reload` is a new `agent` action for a spawner, and pi steers
+mail in before it looks at its queue). Claude and Codex are unchanged. The first start of the new binary adds
+the reload's two columns to the database (schema 30 to 31) after copying it to `backups/`.
+
+### New
+
+- **`piggery reload <worker>`** restarts a worker in its session with your config as it is now: its
+  harness file and prompts are read again, and its model and thinking level come again from
+  `config.yaml`, except one you set by hand with `piggery model`. A worker in a turn reloads when the
+  turn ends (`--now` stops it). `r` in `top` does the same, and a lead has it as `agent action=reload`.
+
+### Changed
+
+- **The `general-policy` prompt** (lead-peer and slp roles) asks for a light touch on small fixes: make
+  the edit and run the related tests, with no plan, checklist or review report, unless the change
+  touches data, security or something hard to undo. An unchanged copy in `~/.piggery/rules` is
+  updated; one you edited is kept (`piggery update --replace general-policy` takes the new text).
+
+### Fixed
+
+- **An `inbox` wait no longer waits out mail that has just arrived** (pi). Mail that came as a tool
+  call ended reached pi's queue only after pi had looked at it, so the model saw it one tool call
+  later. When that call was an `inbox` with `wait`, the wait took the mail as already given and
+  waited the full time for more. pi now waits at that point until the mail is queued.
+- **A member whose turn failed now tells its lead** (#44). A worker whose turn ended on an error (an
+  overloaded model API after pi's retries, say) went idle and nobody was told; it was found by `tail`
+  much later. The member it reports to now gets one mail from the engine with its name, its task and
+  the error text, to mail it on or tail it. A gate keeps its `failed` notice for your hooks and sends
+  no second mail. pi, omp and Codex pass the error text; the others send the mail without it.
+
 ## v0.12.1 - 2026-11-05
 
 Claude Code and Codex sessions join piggery under a non-English locale, an edit to `config.yaml` counts from the next spawn with no restart, and an `every` timer keeps its period through a short pause.

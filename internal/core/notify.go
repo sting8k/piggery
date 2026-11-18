@@ -3,6 +3,9 @@ package core
 import (
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"strings"
 )
 
 // The reserved address `notify` is the engine's notification channel: only the engine writes to it
@@ -252,4 +255,45 @@ func (t *txn) teamSettled(team string) (bool, error) {
 		}
 	}
 	return true, internal(mail.Err())
+}
+
+// maxErrorText is the longest error text a lead is told, in runes.
+const maxErrorText = 300
+
+// tellLead is what a failed turn does when gateNotice told the operator nothing (a headless worker, a
+// member that is not its team's gate, a gate whose turn read no mail): one engine mail to the member
+// p reports to, saying p is idle, its task and the harness's error, so the lead can mail it to go on.
+// A failed turn does not wake itself, so without this nobody would know. A member that reports to
+// nobody, or to a member that has left, has no one to tell. It returns the lead to wake ("" = none told); p is never woken.
+// errText is shown as given, cut to one line (the harness's words: core never reads them).
+func (t *txn) tellLead(p participant, errText string) (string, error) {
+	if p.reportsTo == "" {
+		return "", nil
+	}
+	var live int
+	if err := t.QueryRowContext(t.ctx, `SELECT COUNT(*) FROM participants WHERE id=? AND left_at IS NULL`, p.reportsTo).Scan(&live); err != nil || live == 0 {
+		return "", internal(err) // a lead that left reads nothing
+	}
+	title := "none"
+	var task string
+	err := t.QueryRowContext(t.ctx, `SELECT body FROM messages WHERE to_id=? AND op=? AND held_reason IS NULL ORDER BY seq DESC LIMIT 1`,
+		p.id, OpAssign).Scan(&task)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return "", internal(err)
+	}
+	if at := assignmentTitle(task); at != "" {
+		title = at
+	}
+	text := strings.Join(strings.Fields(errText), " ")
+	if r := []rune(text); len(r) > maxErrorText {
+		text = string(r[:maxErrorText]) + "…"
+	}
+	if text == "" {
+		text = "the harness gave no error text"
+	}
+	body := fmt.Sprintf("%s (%s) ended a turn on an error and is idle. Its task: %s.\nError: %s. Mail it to go on, or tail it.", p.name, p.role, title, text)
+	if _, err := t.insertMessage(newID(t.now), "", p.team, AddrEngine, p.reportsTo, noticeFailed, "", "", body); err != nil {
+		return "", err
+	}
+	return p.reportsTo, nil
 }

@@ -253,6 +253,7 @@ const (
 	AgentSpawn     = "spawn"
 	AgentStop      = "stop"
 	AgentResume    = "resume"
+	AgentReload    = "reload"
 	AgentTail      = "tail"
 	AgentFound     = "found"
 	AgentAdmit     = "admit"
@@ -264,7 +265,7 @@ const (
 )
 
 // AgentArgs is the `agent` tool. Fields by action:
-// spawn {role, name, task}; stop/resume {target}; tail {target, lines}; found {template?}; admit {target, role};
+// spawn {role, name, task}; stop/resume/reload {target}; tail {target, lines}; found {template?}; admit {target, role};
 // templates {}; close {}.
 type AgentArgs struct {
 	Action string `json:"action"`
@@ -293,6 +294,7 @@ type AgentResult struct {
 	TaskID        string            `json:"task_id,omitempty"`        // spawn: the task message
 	TaskSeq       int64             `json:"task_seq,omitempty"`       // spawn, resume with a task: its #N, what the model sees
 	Exit          *Exit             `json:"exit,omitempty"`           // stop
+	Pending       bool              `json:"pending,omitempty"`        // reload: the worker is in a turn; it reloads when the turn ends
 	Records       []json.RawMessage `json:"records,omitempty"`        // tail
 	Text          string            `json:"text,omitempty"`           // templates: the list for the model, printed as is
 	Templates     []TemplateInfo    `json:"templates,omitempty"`      // templates: the same, structured

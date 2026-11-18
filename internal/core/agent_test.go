@@ -1028,7 +1028,7 @@ func TestDriverWakesItsWorker(t *testing.T) {
 	if _, err := f.e.HarnessEvent(ctx, wc, core.HarnessEventArgs{Event: core.HarnessTurnStart, PromptID: "t1"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.e.RuntimeTurnFailed(ctx, s.ParticipantID, s.RunID, "t1"); err != nil {
+	if err := f.e.RuntimeTurnFailed(ctx, s.ParticipantID, s.RunID, "t1", ""); err != nil {
 		t.Fatal(err)
 	}
 	f.rt.woken = nil
@@ -1045,13 +1045,94 @@ func TestDriverWakesItsWorker(t *testing.T) {
 	if _, err := f.e.HarnessEvent(ctx, wc, core.HarnessEventArgs{Event: core.HarnessTurnStart, PromptID: "t2"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := f.e.RuntimeTurnFailed(ctx, s.ParticipantID, s.RunID, "t1"); err != nil {
+	if err := f.e.RuntimeTurnFailed(ctx, s.ParticipantID, s.RunID, "t1", ""); err != nil {
 		t.Fatal(err)
 	}
 	var open int
 	f.db.QueryRow(`SELECT COUNT(*) FROM batches WHERE run_id=? AND ended_at IS NULL`, s.RunID).Scan(&open)
 	if open != 1 {
 		t.Fatalf("open batches %d after a late failure of another turn; want t2 still open", open)
+	}
+}
+
+// A worker whose turn fails is idle and nobody would know: its lead gets one engine mail with its
+// name, task and the harness's error (cut to one line), and is woken. The team's gate keeps only the
+// operator's notice, and sends nothing to anyone.
+func TestFailedTurnTellsTheLead(t *testing.T) {
+	f := newAgentFixture(t)
+	var notified, sunk []string
+	core.WithNotify(func(id string) { notified = append(notified, id) })(f.e)
+	core.WithNotifySink(func(id string) { sunk = append(sunk, id) })(f.e)
+	r, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentSpawn, Role: "worker", Name: "w1", Task: "Build it\nmore detail"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wc, err := f.e.Authenticate(ctx, r.ParticipantID, f.rt.Starts()[0].Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fail := func(c core.Caller, key, errText string) {
+		t.Helper()
+		if _, err := f.e.HarnessEvent(ctx, c, core.HarnessEventArgs{Event: core.HarnessTurnStart, PromptID: key}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.e.HarnessEvent(ctx, c, core.HarnessEventArgs{Event: core.HarnessTurnEnd, PromptID: key, Outcome: core.HarnessOutcomeFailed, Error: errText}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	told := func() (n int, body string) {
+		f.db.QueryRow(`SELECT COUNT(*) FROM messages WHERE from_id='engine' AND kind='failed' AND to_id<>'notify'`).Scan(&n)
+		f.db.QueryRow(`SELECT body FROM messages WHERE from_id='engine' AND kind='failed' AND to_id<>'notify' ORDER BY seq DESC LIMIT 1`).Scan(&body)
+		return
+	}
+	notified = nil
+	fail(wc, "t1", "overloaded_error:\n  try later "+strings.Repeat("x", 400))
+	n, body := told()
+	if n != 1 || !strings.Contains(body, "w1 (worker) ended a turn on an error and is idle. Its task: Build it.") ||
+		!strings.Contains(body, "Error: overloaded_error: try later xxx") || strings.Count(body, "\n") != 1 || len([]rune(body)) > 450 ||
+		!slices.Contains(notified, f.lead.ParticipantID) {
+		t.Fatalf("lead told %d times, woken %v: %q", n, notified, body)
+	}
+	if len(sunk) != 0 {
+		t.Fatalf("a worker's failure went to the operator: %v", sunk)
+	}
+
+	// the gate: the operator's notice only
+	if _, err := f.e.Send(ctx, wc, core.SendArgs{To: "lead", Body: "hello"}); err != nil {
+		t.Fatal(err)
+	}
+	fail(f.lead, "g1", "boom")
+	if n, _ := told(); n != 1 || len(sunk) != 1 {
+		t.Fatalf("gate failure: %d engine mails to a lead in all, %d operator notices; want no new mail and one notice", n, len(sunk))
+	}
+
+	// a taskforce's chair is its team's gate and reports to its caller: a failed turn that read no mail
+	// gets no operator notice, so its caller is told
+	const tf = "template: tf\ntaskforce: {}\nauto_join_role: chair\nroles:\n  chair: {tools: [send, inbox]}\n"
+	core.WithTemplates(func(string, string) (string, error) { return tf, nil })(f.e)
+	if _, err := f.e.Agent(ctx, f.lead, core.AgentArgs{Action: core.AgentSpawn, Template: "tf", Task: "review it"}); err != nil {
+		t.Fatal(err)
+	}
+	var chair string
+	f.db.QueryRow(`SELECT id FROM participants WHERE role='chair'`).Scan(&chair)
+	cc, err := f.e.Authenticate(ctx, chair, f.rt.Starts()[len(f.rt.Starts())-1].Token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	notified = nil
+	fail(cc, "c1", "")
+	if n, body := told(); n != 2 || !strings.Contains(body, "the harness gave no error text") || !slices.Contains(notified, f.lead.ParticipantID) || slices.Contains(notified, chair) {
+		t.Fatalf("chair failure: %d mails, woken %v: %q", n, notified, body)
+	}
+
+	// a session that became the gate keeps reporting to the lead it replaced, who left: a turn that read
+	// no mail tells nobody (the old code mailed the departed lead)
+	f.db.Exec(`UPDATE teams SET gate_id=? WHERE id=?`, f.lead2.ParticipantID, f.teamID)
+	f.db.Exec(`UPDATE participants SET reports_to=? WHERE id=?`, f.lead.ParticipantID, f.lead2.ParticipantID)
+	f.db.Exec(`UPDATE participants SET left_at=1 WHERE id=?`, f.lead.ParticipantID)
+	fail(f.lead2, "g2", "boom")
+	if n, _ := told(); n != 2 {
+		t.Fatalf("a lead that left was told: %d engine mails, want the 2 from before", n)
 	}
 }
 

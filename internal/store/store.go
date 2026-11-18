@@ -106,8 +106,11 @@ var migrate29 string
 //go:embed migrate_30.sql
 var migrate30 string
 
+//go:embed migrate_31.sql
+var migrate31 string
+
 // migrations[i] takes the DB from version i to i+1. schema.sql is v1; never edit an applied step.
-var migrations = []string{schema, migrate2, migrate3, migrate4, migrate5, migrate6, migrate7, migrate8, migrate9, migrate10, migrate11, migrate12, migrate13, migrate14, migrate15, migrate16, migrate17, migrate18, migrate19, migrate20, migrate21, migrate22, migrate23, migrate24, migrate25, migrate26, migrate27, migrate28, migrate29, migrate30}
+var migrations = []string{schema, migrate2, migrate3, migrate4, migrate5, migrate6, migrate7, migrate8, migrate9, migrate10, migrate11, migrate12, migrate13, migrate14, migrate15, migrate16, migrate17, migrate18, migrate19, migrate20, migrate21, migrate22, migrate23, migrate24, migrate25, migrate26, migrate27, migrate28, migrate29, migrate30, migrate31}
 
 // Open opens (creating if needed) the DB file at path with mode 0600, WAL, and the schema applied.
 // An existing DB below the latest schema version is first copied to backups/ next to it (backup).

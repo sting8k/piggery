@@ -38,6 +38,14 @@ func (e *Engine) Agent(ctx context.Context, c Caller, a AgentArgs) (AgentResult,
 		return e.spawn(ctx, c, a)
 	case AgentResume:
 		return e.resume(ctx, c, a)
+	case AgentReload:
+		return e.reload(ctx, func(t *txn) (participant, participant, error) {
+			p, w, err := t.ownedWorker(c, a.Target, "agent.reload")
+			if err != nil {
+				return p, w, err
+			}
+			return p, w, t.requireHeadless(w, "a session is restarted by its Human")
+		}, false)
 	case AgentStop:
 		return e.stop(ctx, c, a)
 	case AgentTail:

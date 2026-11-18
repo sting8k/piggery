@@ -47,6 +47,8 @@ type Engine struct {
 	// exit of either is intended, so it does not wake the worker (ProcessExited).
 	stopping sync.Map // run id -> struct{}
 	closing  atomic.Bool
+	// reloads holds the workers a reload waits on until their turn ends (reload.go).
+	reloads sync.Map // participant id -> struct{}
 	// notifySink is told about each new, not held message to notify (WithNotifySink).
 	notifySink func(messageID string)
 	// roleChanged is told when a live session's role changes under it (WithRoleChanged).
@@ -431,6 +433,7 @@ type HarnessEventArgs struct {
 	PromptID       string `json:"prompt_id,omitempty"`   // turn_start, tool_boundary, turn_end: the harness's key of the turn
 	Wake           bool   `json:"wake,omitempty"`        // turn_start: a mail check (a wake, a reconnect), not a turn: with nothing to give, nothing is opened
 	Seen           int64  `json:"seen,omitempty"`        // tool_boundary, turn_end: the highest part of this turn a finished model turn read; acked at once
+	Error          string `json:"error,omitempty"`       // turn_end failed: the harness's error text, only shown to the lead (never branched on)
 	StopHookActive bool   `json:"stop_hook_active,omitempty"`
 }
 

@@ -27,6 +27,10 @@ Change the right thing
   5. Would patching, replacing or removing it give the right and smallest result?
 - Before asking "how do I make this faster", ask "what should it not do at all". Patch only once
   the mechanism is shown to fit.
+- For small fixes (a few lines, one spot, no change to APIs, schemas, or shared behavior), stay
+  lightweight: make the edit, run the relevant existing tests/lint if any. Skip plans,
+  checklists, task lists, audit reports, or multi-step reviews, unless the change touches data,
+  security, or anything hard to undo.
 
 Numbers
 - A number that gates or steers the work (in a plan, a design, a brief) is a proxy for the goal: say

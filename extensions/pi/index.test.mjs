@@ -38,8 +38,14 @@ test("the extension against a fake daemon", async (t) => {
 		p1: { team_id: "T", name: "lead", role: "peer", tools: ["send", "inbox", "who", "agent"], role_card: "team card", protocol_version: 1 },
 		p2: { team_id: "", name: "pi-1", tools: ["send", "inbox", "who", "agent"], role_card: "solo card" },
 	};
+	let boundaryMail = ""; // the text the next tool_boundary gives
 	const answer = (f) => {
 		calls.push({ verb: f.verb, as: f.auth?.id, args: f.args });
+		if (f.verb === "harness.event" && f.args.event === "tool_boundary" && boundaryMail) {
+			const text = boundaryMail;
+			boundaryMail = "";
+			return { text, part: 1 };
+		}
 		if (f.verb === "join.auto") return joins.shift();
 		if (f.verb === "identify") return { ...identity[f.auth.id], run_id: f.args.run_id };
 		if (f.verb === "agent" && f.args.action === "close") return { team_id: "T", team_name: "t1", stopped: ["w1"] };
@@ -65,6 +71,7 @@ test("the extension against a fake daemon", async (t) => {
 
 	const tools = {};
 	const handlers = {};
+	const steers = []; // pi's steer queue
 	let active = [];
 	let level = "xhigh"; // pi's own level: piggery passes it on as is
 	const pi = new Proxy(
@@ -74,13 +81,15 @@ test("the extension against a fake daemon", async (t) => {
 			getActiveTools: () => active,
 			setActiveTools: (a) => (active = a),
 			getThinkingLevel: () => level,
+			// pi runs its input handlers (async) before a steer is queued
+			sendUserMessage: (text, o) => o?.deliverAs === "steer" && setTimeout(() => steers.push(text), 20),
 		},
 		{ get: (o, k) => o[k] ?? (() => {}) },
 	);
 	const { default: piggery } = await import("./index.ts");
 	piggery(pi);
 	const glm = { provider: "HP", id: "glm-5.3-flash" };
-	const ctx = { mode: "rpc", hasUI: false, cwd: process.env.HOME, isIdle: () => true, hasPendingMessages: () => false, model: glm, sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => "/s/sess-1.jsonl" } };
+	const ctx = { mode: "rpc", hasUI: false, cwd: process.env.HOME, isIdle: () => true, hasPendingMessages: () => steers.length > 0, model: glm, sessionManager: { getSessionId: () => "sess-1", getSessionFile: () => "/s/sess-1.jsonl" } };
 	handlers.session_start({}, ctx);
 	await until(() => calls.some((c) => c.verb === "identify" && c.as === "p1"));
 
@@ -158,6 +167,15 @@ test("the extension against a fake daemon", async (t) => {
 		await until(() => turn("p1", "turn_end"));
 		assert.equal(turn("p1", "turn_end").args.prompt_id, turn("p1", "turn_start").args.prompt_id);
 		assert.equal(turn("p1", "turn_end").args.outcome, "ok");
+		handlers.agent_settled({}, ctx);
+	});
+	await t.test("mail given at a tool boundary is in pi's steer queue by the time pi's awaited turn_end returns", async () => {
+		handlers.agent_start({}, ctx);
+		boundaryMail = "mail #1";
+		await handlers.turn_end({ message: { role: "assistant", stopReason: "toolUse" } });
+		// pi reads its queue now: had the steer come later, it would wait one more tool call (an inbox wait)
+		assert.deepEqual(steers, ["mail #1"]);
+		steers.length = 0;
 		handlers.agent_settled({}, ctx);
 	});
 	handlers.session_shutdown?.({ reason: "quit" });

@@ -157,8 +157,8 @@ func Run(ctx context.Context, cfg Config) error {
 		if err := s.eng.ProcessExited(context.Background(), participantID, runID, e); err != nil {
 			s.log.Warn("process exited", "participant", participantID, "run", runID, "err", err)
 		}
-	}, OnTurnFailed: func(participantID, runID, key string) {
-		if err := s.eng.RuntimeTurnFailed(context.Background(), participantID, runID, key); err != nil {
+	}, OnTurnFailed: func(participantID, runID, key, errText string) {
+		if err := s.eng.RuntimeTurnFailed(context.Background(), participantID, runID, key, errText); err != nil {
 			s.log.Warn("turn failed", "participant", participantID, "run", runID, "err", err)
 		}
 	}, OnDelivery: func(participantID, runID string, batch int64, outcome string) {
@@ -501,7 +501,7 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 			return r, err
 		})
 	case proto.VerbTeamUp, proto.VerbJoin, proto.VerbLog, proto.VerbRelease,
-		proto.VerbWhy, proto.VerbDoctor, proto.VerbLabels, proto.VerbTeamDown, proto.VerbGC, proto.VerbPs, proto.VerbTail, proto.VerbShutdown, proto.VerbAbort, proto.VerbKill, proto.VerbResume, proto.VerbModel, proto.VerbModels:
+		proto.VerbWhy, proto.VerbDoctor, proto.VerbLabels, proto.VerbTeamDown, proto.VerbGC, proto.VerbPs, proto.VerbTail, proto.VerbShutdown, proto.VerbAbort, proto.VerbKill, proto.VerbResume, proto.VerbReload, proto.VerbModel, proto.VerbModels:
 		if !s.isAdmin(req.AdminToken) {
 			return errResponse(req.ID, s.unauthorized(req.Verb, "admin token required"))
 		}
@@ -535,6 +535,8 @@ func (s *server) handle(ctx context.Context, cn *conn, req proto.Request) proto.
 			return call(req, func(a core.AdminTarget) (any, error) { return s.eng.Kill(ctx, a) })
 		case proto.VerbResume:
 			return call(req, func(a core.AdminTarget) (any, error) { return s.eng.Resume(ctx, a) })
+		case proto.VerbReload:
+			return call(req, func(a core.ReloadArgs) (any, error) { return s.eng.Reload(ctx, a) })
 		case proto.VerbModel:
 			return call(req, func(a core.ModelArgs) (any, error) { return s.eng.SetModel(ctx, a) })
 		case proto.VerbModels:

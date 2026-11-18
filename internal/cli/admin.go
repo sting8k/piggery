@@ -48,6 +48,28 @@ func (e *env) resumeCmd(args []string) error {
 	})
 }
 
+func (e *env) reloadCmd(args []string) error {
+	fs := e.flags("reload")
+	var a core.ReloadArgs
+	fs.StringVar(&a.Team, "team", "", "team, when the name is in more than one")
+	fs.BoolVar(&a.Now, "now", false, "stop the turn in progress instead of waiting for its end")
+	pos, err := parse(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(pos) != 1 {
+		return fmt.Errorf("%w: reload <worker> [--now] [--team T]", errUsage)
+	}
+	a.Target = pos[0]
+	return do(e, proto.VerbReload, a, func(w io.Writer, r core.AgentResult) {
+		if r.Pending {
+			fmt.Fprintln(w, r.Text+" (--now stops the turn)")
+			return
+		}
+		fmt.Fprintf(w, "reloaded %s (run %s)\n", a.Target, r.RunID)
+	})
+}
+
 func (e *env) killCmd(args []string) error {
 	a, _, err := e.target("kill", args, 0, "kill <worker> [--team T]")
 	if err != nil {

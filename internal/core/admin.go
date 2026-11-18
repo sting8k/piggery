@@ -229,8 +229,10 @@ func (e *Engine) SetModel(ctx context.Context, a ModelArgs) (ModelResult, error)
 		}
 	}
 	return res, e.inTx(ctx, func(t *txn) error {
+		// Set by hand: a reload keeps it (reload.go).
 		if _, err := t.ExecContext(t.ctx, `UPDATE participants SET model=COALESCE(NULLIF(?,''),model),
-			thinking=COALESCE(NULLIF(?,''),thinking) WHERE id=?`, a.Model, a.Thinking, w.id); err != nil {
+			thinking=COALESCE(NULLIF(?,''),thinking), model_by_hand=model_by_hand OR ?<>'',
+			thinking_by_hand=thinking_by_hand OR ?<>'' WHERE id=?`, a.Model, a.Thinking, a.Model, a.Thinking, w.id); err != nil {
 			return internal(err)
 		}
 		// The harness switched: that is what the session runs now, whatever it last reported (pi
